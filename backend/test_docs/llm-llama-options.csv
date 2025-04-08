@@ -1,0 +1,4 @@
+﻿Model Name,Num of Parameters (Billions),Price per Input Token,Price per Output Token,Price per 2048 Input Tokens,Price per 2048 Output Tokens,Total Price per 2048 Tokens,Price per 4096 Input Tokens,Price per 4096 Output Tokens,Total Price per 4096 Tokens
+Meta-Llama-3.1-8B-Instruct,8,$0.0003,$0.00061,$0.624,$1.2608,$1.8848,$1.248,$2.5216,$3.7696
+Meta-Llama-3-8B-Instruct,8,$0.0003,$0.00061,$0.624,$1.2608,$1.8848,$1.248,$2.5216,$3.7696
+Llama-2-7b-ms,7,$0.00052,$0.00067,$1.0656,$1.3776,$2.4432,$2.1312,$2.7552,$4.8864
