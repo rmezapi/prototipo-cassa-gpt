@@ -1,0 +1,4 @@
+﻿NC4as_T4_v3,Tesla T4,16 GB,4,28 GB,$0.35,Small batches (1–8 resumes) with optimizations (FP16).
+NV128as_NV4,NVIDIA A10G,24 GB,48,128 GB,$1.20,Medium-large batches (10–20 resumes). Better memory for parallel processing.
+NC24s_v3,Tesla V100,32 GB,24,448 GB,$3.20,Very large batches (20+ resumes) or complex models.
+ND40rs_v4,NVIDIA A100,40 GB,40,900 GB,$5.50,Extreme workloads (50+ resumes) or multi-task pipelines.

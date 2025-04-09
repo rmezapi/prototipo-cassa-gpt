@@ -16,7 +16,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 # We'll need embedding size later, get it from the model or hardcode for now
 # Example size for models like 'all-MiniLM-L6-v2' or many BERT-based ones
 # You might need to adjust this based on EMBEDDING_MODEL_NAME
-EMBEDDING_DIMENSION = 384 # Example, ** ADJUST AS NEEDED **
+EMBEDDING_DIMENSION = 768 # Example, ** ADJUST AS NEEDED **
 
 class QdrantService:
     def __init__(self):

@@ -3,9 +3,13 @@ import os
 import logging # Import logging
 from fastapi import FastAPI, HTTPException
 from dotenv import load_dotenv
+# In main.py or a config module
+import cloudinary
+import os
 
-# Import the chat router
+# Import the routers
 from routers import chat as chat_router
+from routers import upload as upload_router # <--- Import upload router
 
 # Import the Qdrant service instance (to ensure it initializes on startup)
 # We don't directly use it in main.py yet, but importing ensures connection check
@@ -38,6 +42,30 @@ QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
+# --- Initialize Cloudinary ---
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+if all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+    try:
+        cloudinary.config(
+          cloud_name = CLOUDINARY_CLOUD_NAME,
+          api_key = CLOUDINARY_API_KEY,
+          api_secret = CLOUDINARY_API_SECRET,
+          secure = True # Use https
+        )
+        cloudinary_status = "Initialized"
+        logger.info("Cloudinary client configured.")
+    except Exception as e:
+        logger.error(f"Failed to configure Cloudinary: {e}", exc_info=True)
+        cloudinary_status = "Configuration Failed"
+else:
+    logger.warning("Cloudinary credentials missing in environment variables.")
+    cloudinary_status = "Credentials Missing"
+# --- End Cloudinary Init ---
+
+
 # ---- FastAPI App Instance ----
 app = FastAPI(
     title="Sugar AI Prototype Backend",
@@ -47,6 +75,7 @@ app = FastAPI(
 
 # ---- Include Routers ----
 app.include_router(chat_router.router) # Include the chat endpoints
+app.include_router(upload_router.router) # <--- Include upload router
 
 # ---- API Endpoints (Keep root endpoint here) ----
 @app.get("/", tags=["Health Check"])
