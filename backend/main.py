@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 # In main.py or a config module
 import cloudinary
 import os
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # Import the routers
 from routers import chat as chat_router
@@ -73,6 +75,31 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# --- Configure CORS ---
+# Define the origins allowed to make requests.
+# For development, allow localhost ports used by frontend and Swagger.
+# For production, replace with your deployed frontend URL (e.g., from Netlify).
+origins = [
+    "http://localhost", # Allow base localhost
+    "http://localhost:3000", # Default Remix dev port
+    "http://localhost:5173", # Default Vite dev port (sometimes used)
+    "http://localhost:8000", # Allow Swagger UI/API itself if needed
+    # --- Add your deployed frontend origin (Netlify URL) when ready ---
+    # "https://your-netlify-app-name.netlify.app",
+]
+# If your backend might be deployed too, add its origin if different
+# origins.append("https://your-backend-url.onrender.com")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins, # List of allowed origins
+    allow_credentials=True, # Allow cookies if needed later
+    allow_methods=["*"], # Allow all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"], # Allow all headers
+)
+# --- End CORS Configuration ---
+
 # ---- Include Routers ----
 app.include_router(chat_router.router) # Include the chat endpoints
 app.include_router(upload_router.router) # <--- Include upload router
@@ -88,6 +115,8 @@ async def read_root():
         "message": "Welcome to the Sugar AI Backend!",
         "qdrant_service_status": qdrant_status,
         "together_service_status": together_status,
+        "cloudinary_status": cloudinary_status,
+        "embedding_service_status": "Initialized" if 'embedding_service' in locals() and embedding_service else "Not Initialized" # Add status for embedding service
         }
 
 @app.get("/config-check", tags=["Health Check"])
