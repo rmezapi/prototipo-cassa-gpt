@@ -195,6 +195,8 @@ async def handle_chat_message(
 
 
         # 4. Search Relevant Context (Qdrant search - sync within client, usually okay)
+        logger.info(f"Searching for relevant context in Qdrant for conversation {conversation_id}...")
+        # Filter to only include messages from the same conversation
         conv_filter = Filter(
             must=[
                 FieldCondition(key="payload.conversation_id", match=MatchValue(value=conversation_id))
@@ -215,31 +217,50 @@ async def handle_chat_message(
             limit=2 # Tune this limit
         )
 
-        # 5. Combine and Format Context (No change needed)
+        # 5. Combine and Format Context
         context_chunks = []
         sources_for_response = []
-        # Process history results first
-        history_chunks_temp = []
-        for hit in history_search_results:
-             # Avoid retrieving the exact same user message just stored if similarity is very high
-             if hit.id == user_message_id: continue
-             speaker = hit.payload.get("speaker", "unknown")
-             text = hit.payload.get("text", "")
-             history_chunks_temp.append(f"{speaker.capitalize()}: {text}")
+        logger.info("Processing search results...")
+
         # Process upload results
-        for hit in upload_search_results:
-            chunk_text = hit.payload.get("text", "")
-            source_file = hit.payload.get("source_filename", "N/A")
-            context_chunks.append(f"Context from uploaded file '{source_file}':\n{chunk_text}")
-            sources_for_response.append({
-                 "type": "upload", "filename": source_file, "score": hit.score, "text": chunk_text[:200]+"..." # Truncate
-            })
-        # Combine, putting history first might be slightly better contextually
-        context_chunks = history_chunks_temp + context_chunks
-        context_string = "\n\n---\n\n".join(context_chunks)
-        logger.info(f"Combined context string length: {len(context_string)}")
-        if not context_string.strip():
-             context_string = "No specific context found from previous messages or documents."
+        logger.info(f"--- Examining {len(upload_search_results)} Upload Hits ---") # Log count again
+        for i, hit in enumerate(upload_search_results):
+            logger.info(f"  Upload Hit {i+1} Payload: {hit.payload}") # Log the payload
+            logger.info(f"  Upload Hit {i+1} Score: {hit.score}")
+            # Try accessing the text
+            chunk_text = hit.payload.get("text") # Use .get() without default first
+            if chunk_text: # Check if text is not None and not empty
+                logger.info(f"    Got non-empty text for upload hit {i+1}. Appending.")
+                source_file = hit.payload.get("source_filename", "N/A")
+                context_chunks.append(f"Context from uploaded file '{source_file}':\n{chunk_text}")
+                sources_for_response.append({ "type": "upload", "filename": source_file, "score": hit.score, "text": chunk_text[:200]+"..." })
+            else:
+                logger.warning(f"    Upload hit {i+1} payload did NOT contain valid 'text'. Payload was: {hit.payload}")
+
+        # Process history results
+        history_chunks_temp = []
+        logger.info(f"--- Examining {len(history_search_results)} History Hits ---") # Log count again
+        for i, hit in enumerate(history_search_results):
+            logger.info(f"  History Hit {i+1} Payload: {hit.payload}") # Log the payload
+            logger.info(f"  History Hit {i+1} ID: {hit.id}, Score: {hit.score}")
+            if hit.id == user_message_id:
+                logger.info("    Skipping current user message in history results.")
+                continue
+            # Try accessing the text
+            text = hit.payload.get("text")
+            if text: # Check if text is not None and not empty
+                logger.info(f"    Got non-empty text for history hit {i+1}. Appending.")
+                speaker = hit.payload.get("speaker", "unknown")
+                history_chunks_temp.append(f"{speaker.capitalize()}: {text}")
+            else:
+                logger.warning(f"    History hit {i+1} payload did NOT contain valid 'text'. Payload was: {hit.payload}")
+
+            # Combine, putting history first might be slightly better contextually
+            context_chunks = history_chunks_temp + context_chunks
+            context_string = "\n\n---\n\n".join(context_chunks)
+            logger.info(f"Combined context string length: {len(context_string)}")
+            if not context_string.strip():
+                context_string = "No specific context found from previous messages or documents."
 
 
         # 6. Construct the LLM Prompt (Refine as needed)

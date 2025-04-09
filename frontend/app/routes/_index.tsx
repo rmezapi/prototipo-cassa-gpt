@@ -2,7 +2,7 @@
 import type { MetaFunction } from "@remix-run/node"; // Corrected import
 import { useState, useEffect, useRef, useCallback } from "react"; // Added useEffect, useRef, useCallback
 // Import API client functions
-import { createConversation, sendChatMessage } from "~/lib/apiClient"; // Adjust path if needed
+import { createConversation, sendChatMessage, uploadFile } from "~/lib/apiClient"; // Adjust path if needed
 
 export const meta: MetaFunction = () => {
   return [
@@ -59,6 +59,24 @@ const buttonStyle: React.CSSProperties = {
   borderRadius: "4px",
   cursor: "pointer",
 };
+
+// Style for the file input (hidden) and its label (acting as button)
+const fileInputLabelStyle: React.CSSProperties = {
+  ...buttonStyle, // Inherit button style
+  backgroundColor: "#6c757d", // Grey color
+  cursor: "pointer",
+  display: "inline-block", // Allow styling like a button
+  padding: "0.5rem 1rem", // Match send button padding
+  textAlign: "center",
+};
+const hiddenFileInputStyle: React.CSSProperties = {
+  display: 'none', // Hide the actual input element
+};
+const uploadStatusStyle: React.CSSProperties = {
+  fontSize: "0.8rem",
+  marginLeft: "1rem",
+  color: "#6c757d",
+};
 // Add styles for loading/error if needed
 
 
@@ -71,6 +89,12 @@ export default function Index() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false); // Loading state for AI response
   const [error, setError] = useState<string | null>(null); // Error state
+  // --- Add Upload State ---
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for hidden input
+  // --- End Upload State ---
 
   const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling
 
@@ -106,6 +130,51 @@ export default function Index() {
   // Function to scroll to the bottom of the message list
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // --- Handle File Selection ---
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+        setSelectedFile(file);
+        setUploadStatus(`Selected: ${file.name}`);
+        // Trigger upload immediately after selection
+        handleFileUpload(file);
+    }
+    // Clear the input value so the same file can be selected again
+    if(event.target) event.target.value = '';
+};
+
+  // --- Handle File Upload API Call ---
+  const handleFileUpload = async (fileToUpload: File | null) => {
+      if (!fileToUpload || !conversationId || isUploading) return;
+
+      setIsUploading(true);
+      setError(null); // Clear previous errors
+      setUploadStatus(`Uploading ${fileToUpload.name}...`);
+
+      try {
+          console.log(`Uploading file ${fileToUpload.name} for conv ${conversationId}`);
+          const response = await uploadFile(conversationId, fileToUpload);
+          console.log("Upload response:", response);
+          setUploadStatus(`✅ ${response.filename} uploaded (${response.chunks_added ?? 0} chunks added).`);
+          // Add a system message to chat?
+          setMessages(prev => [...prev, {
+                id: crypto.randomUUID(),
+                speaker: 'ai', // Or 'system'?
+                text: `Successfully processed file: ${response.filename}`
+          }])
+
+      } catch (err: any) {
+          console.error("Upload failed:", err);
+          const errorMsg = err?.message || "File upload failed.";
+          setError(`Upload Error: ${errorMsg}`); // Show error near input maybe
+          setUploadStatus(`❌ Upload failed: ${errorMsg}`);
+      } finally {
+          setIsUploading(false);
+          setSelectedFile(null); // Clear selection after attempt
+          // Keep status message for a bit or clear it? Let's keep it for now.
+      }
   };
 
   // Scroll to bottom whenever messages change
@@ -212,6 +281,19 @@ export default function Index() {
       </div>
 
       <form onSubmit={handleSendMessage} style={inputAreaStyle}>
+        {/* Hidden File Input */}
+        <input
+              type="file"
+              ref={fileInputRef}
+              style={hiddenFileInputStyle}
+              onChange={handleFileChange}
+              accept=".pdf,.docx,.xlsx,.txt,.jpg,.jpeg,.png,.gif,.bmp,.webp" // Specify acceptable types
+              disabled={isUploading || !conversationId}
+         />
+         {/* Label styled as Upload Button */}
+         <label htmlFor={fileInputRef.current?.id} style={fileInputLabelStyle} onClick={() => fileInputRef.current?.click()}>
+             {isUploading ? "Uploading..." : "Upload"}
+         </label>
         <input
           type="text"
           style={inputStyle}
@@ -227,8 +309,9 @@ export default function Index() {
         >
             {isLoading ? "Wait..." : "Send"}
         </button>
-        {/* TODO: Add File Upload Button here later */}
       </form>
+      {/* Display Upload Status Below Input Area */}
+      {uploadStatus && <div style={uploadStatusStyle}>{uploadStatus}</div>}
     </div>
   );
 }

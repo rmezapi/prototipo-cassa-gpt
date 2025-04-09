@@ -113,21 +113,101 @@ export const sendChatMessage = (payload: ChatRequestPayload): Promise<ChatRespon
     });
 };
 
-// Add function for file upload later (will need different headers/body)
-// export const uploadFile = async (conversationId: string, file: File): Promise<any> => {
-//     const formData = new FormData();
-//     formData.append("conversation_id", conversationId);
-//     formData.append("file", file);
-//
-//     // NOTE: Don't set Content-Type header when using FormData,
-//     // the browser will set it correctly with the boundary.
-//     return fetchApi<any>("/upload", {
-//         method: "POST",
-//         body: formData,
-//         headers: {
-//             // Remove default JSON headers for FormData
-//             'Content-Type': undefined, // Let browser set it
-//             'Accept': 'application/json', // We still expect JSON back
-//         }
-//     });
-// }
+// Define response type from backend's /upload endpoint
+// frontend/app/lib/apiClient.ts
+interface UploadResponsePayload {
+    message: string;
+    filename: string;
+    doc_id?: string;
+    chunks_added?: number;
+}
+
+export const uploadFile = async (
+    conversationId: string,
+    file: File
+): Promise<UploadResponsePayload> => {
+    if (!conversationId) {
+        // Add console log for debugging
+        console.error("uploadFile called without conversationId");
+        throw new Error("Conversation ID is required for file upload.");
+    }
+    if (!file) {
+        // Add console log
+        console.error("uploadFile called without file object");
+        throw new Error("File is required for upload.");
+    }
+
+    // --- Create FormData ---
+    const formData = new FormData();
+    // Key must exactly match FastAPI's Form("conversation_id")
+    formData.append("conversation_id", conversationId);
+    // Key must exactly match FastAPI's File("file")
+    formData.append("file", file, file.name);
+
+    // --- Debugging: Log FormData content ---
+    // Note: You can't directly log FormData easily, but you can check keys/values
+    console.log("FormData prepared for upload:");
+    for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value instanceof File ? `File(${value.name}, size=${value.size})` : value);
+    }
+    // --- End Debugging ---
+
+
+    const url = `${API_BASE_URL}/upload`; // Construct URL here for clarity
+    console.log(`Attempting POST to ${url}`);
+
+    try {
+        // --- Make the fetch call ---
+        const response = await fetch(url, {
+            method: "POST",
+            body: formData,
+            // **NO Content-Type header here - let the browser set it**
+            headers: {
+                // We *only* need 'Accept' if we strictly expect JSON back
+                // If the backend might return non-JSON on error, even this isn't strictly needed
+                'Accept': 'application/json',
+                // Add any necessary Auth headers later
+            }
+        });
+
+        // --- Process Response ---
+        // Log status for debugging
+        console.log(`Upload Response Status: ${response.status} ${response.statusText}`);
+
+        // Check for non-OK status first
+        if (!response.ok) {
+            let errorData = { detail: `Upload failed with status ${response.status}` }; // Default error
+            try {
+                 // Try to parse JSON error body from FastAPI (like the 422 detail)
+                errorData = await response.json();
+                console.error("Parsed API Error Response:", errorData);
+            } catch (e) {
+                console.error("Failed to parse error response body, using status text.");
+                errorData = { detail: response.statusText || `HTTP error ${response.status}` };
+            }
+            // Throw an error that includes the detail message
+            throw new Error(
+                typeof errorData.detail === 'string'
+                ? errorData.detail // Use FastAPI's detail if it's a string
+                : JSON.stringify(errorData.detail) // Stringify if complex (like the list)
+            );
+        }
+
+        // Handle potential empty success response (though unlikely for this endpoint)
+        if (response.status === 204) {
+           return { message: "Upload successful (No Content)", filename: file.name } as UploadResponsePayload;
+        }
+
+        // Parse successful JSON response
+        const data: UploadResponsePayload = await response.json();
+        console.log("Parsed API Success Response:", data);
+        return data;
+
+    } catch (error) {
+        // Log and re-throw wrapped error
+        console.error(`Upload API call failed: ${url}`, error);
+        // Ensure the message from the thrown error above is propagated
+        const errorMessage = error instanceof Error ? error.message : "Network or unexpected upload error occurred";
+        throw new Error(errorMessage); // Re-throw as a standard Error
+    }
+}

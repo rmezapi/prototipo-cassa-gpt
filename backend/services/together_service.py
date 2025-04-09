@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 # ... (Model names remain the same) ...
 VISION_MODEL = os.getenv("VISION_MODEL_NAME", "meta-llama/Llama-Vision-Free")
-GENERATION_MODEL = os.getenv("GENERATION_MODEL_NAME", "mistralai/Mixtral-8x7B-Instruct-v0.1")
+GENERATION_MODEL = os.getenv("GENERATION_MODEL_NAME", "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free")
 
 if not TOGETHER_API_KEY:
     raise ValueError("TOGETHER_API_KEY is required")

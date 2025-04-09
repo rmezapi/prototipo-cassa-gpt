@@ -43,12 +43,13 @@ router = APIRouter(
 
 @router.post("", status_code=201)
 async def upload_and_process_file(
-    # --- Use Renamed Service Instances in Dependencies ---
-    conversation_id: str = Form(...),
+    # Declare File and Form fields FIRST
     file: UploadFile = File(...),
-    qdrant = Depends(get_qdrant_service), # Renamed variable for injected service
+    conversation_id: str = Form(...),
+    # Declare Dependencies AFTER
+    qdrant = Depends(get_qdrant_service),
     processor = Depends(get_doc_processor),
-    embed_svc = Depends(get_embedding_service), # Use new embedding service
+    embed_svc = Depends(get_embedding_service),
 ):
     """
     Uploads a file, processes it (PDF, DOCX, XLSX via CSV, TXT, Images via Cloudinary+Vision),
@@ -57,9 +58,11 @@ async def upload_and_process_file(
     logger.info(f"Received file upload request for conversation_id: {conversation_id}")
     if not file.filename:
          raise HTTPException(status_code=400, detail="Filename cannot be empty")
+    filename = file.filename
+    logger.info(f"Processing file: {filename}")
+
 
     contents = await file.read()
-    filename = file.filename
     image_url_for_processing = None
     file_bytes_for_processing = None
 
