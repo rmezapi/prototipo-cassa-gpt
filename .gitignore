@@ -15,6 +15,9 @@ backend/*.env
 .DS_Store
 Thumbs.db
 
+# Database files
+backend/sql_app.db
+
 # Node / Frontend (Add later when you create the frontend)
 # frontend/node_modules/
 # frontend/.env*
