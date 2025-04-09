@@ -82,7 +82,7 @@ class QdrantService:
             return operation_info
         except Exception as e:
             logger.error(f"Failed to add points to {collection_name}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to add data to {collection_name}") from e
+            raise HTTPException(status_code=500, detail=f"Failed to add data to {collection_name}")
 
     def search_points(self, collection_name: str, query_vector: list[float], limit: int = 5, query_filter: models.Filter = None):
         """Searches for points in a collection similar to the query vector."""
@@ -97,7 +97,7 @@ class QdrantService:
             return search_result
         except Exception as e:
             logger.error(f"Failed to search points in {collection_name}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to search data in {collection_name}") from e
+            raise HTTPException(status_code=500, detail=f"Failed to search data in {collection_name}")
 
 # --- Singleton Pattern ---
 # Create a single instance of the service to be reused across the application
