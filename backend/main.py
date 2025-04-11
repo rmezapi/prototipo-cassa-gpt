@@ -11,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Import the routers
 from routers import chat as chat_router
-from routers import upload as upload_router # <--- Import upload router
+from routers import upload as upload_router 
+from routers import knowledge_bases as kb_router 
 
 # Import the Qdrant service instance (to ensure it initializes on startup)
 # We don't directly use it in main.py yet, but importing ensures connection check
@@ -110,7 +111,8 @@ app.add_middleware(
 
 # ---- Include Routers ----
 app.include_router(chat_router.router) # Include the chat endpoints
-app.include_router(upload_router.router) # <--- Include upload router
+app.include_router(upload_router.router) # Include the upload endpoints
+app.include_router(kb_router.router) # Include the knowledge base endpoints
 
 # ---- API Endpoints (Keep root endpoint here) ----
 @app.get("/", tags=["Health Check"])
