@@ -2,9 +2,9 @@
 import uuid
 import logging
 import datetime # For timestamps
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Query # Import FastAPI components
 from fastapi.concurrency import run_in_threadpool # Import for wrapping sync DB calls
-from pydantic import BaseModel # For request body validation
+from pydantic import BaseModel, Field # For request body validation
 from sqlalchemy.orm import Session # Import Session for DB operations
 
 # Import DB models and session getter
@@ -38,11 +38,31 @@ logger = logging.getLogger(__name__)
 
 # --- API Router ---
 router = APIRouter(
-    prefix="/chat",
-    tags=["Chat"],
-)
+    prefix="/chat", 
+    tags=["Chat & Conversations"]
+    ) # Update tag
 
-# --- Request/Response Models ---
+
+# --- New/Modified Pydantic Models ---
+class ConversationInfo(BaseModel):
+    id: str
+    created_at: datetime.datetime # Pydantic V2 handles datetime serialization
+
+    class Config:
+        from_attributes = True # Use instead of orm_mode=True
+
+class MessageInfo(BaseModel):
+    id: str
+    speaker: str
+    text: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+class ConversationDetail(ConversationInfo):
+    messages: list[MessageInfo] = []
+
 class ChatRequest(BaseModel):
     query: str
     conversation_id: str
@@ -55,78 +75,82 @@ class ChatResponse(BaseModel):
 
 # --- Endpoint Implementations ---
 
-@router.post("/conversation", response_model=dict)
+@router.post("/conversations", response_model=ConversationInfo) # Changed endpoint name slightly
 async def create_conversation(db: Session = Depends(get_db)): # Inject DB Session
     """
     Creates a new conversation record in the database and returns its ID.
     """
     conversation_id = str(uuid.uuid4())
     db_conversation = db_models.Conversation(id=conversation_id)
-
-    def _sync_create_conversation(): # Helper for sync DB operations
+    def _sync_create():
         try:
             db.add(db_conversation)
             db.commit()
-            db.refresh(db_conversation) # Get updated data like created_at
+            db.refresh(db_conversation)
+            return db_conversation # Return the object
         except Exception as e:
-             db.rollback() # Important: Rollback on error
-             logger.error(f"Failed to create conversation {conversation_id} in DB: {e}", exc_info=True)
-             # Re-raise the exception to be caught by the outer handler
+             db.rollback()
+             logger.error(f"Failed to create conversation in DB: {e}", exc_info=True)
              raise Exception(f"Database error during conversation creation: {str(e)}") from e
-
     try:
-        # Wrap the synchronous database operations in run_in_threadpool
-        await run_in_threadpool(_sync_create_conversation)
-        logger.info(f"Created new conversation with ID: {conversation_id}")
-        return {"conversation_id": conversation_id}
+        created_conv = await run_in_threadpool(_sync_create)
+        logger.info(f"Created new conversation with ID: {created_conv.id}")
+        return created_conv # FastAPI will convert using ConversationInfo model
     except Exception as e:
-         # Handle exceptions raised from the threadpool/helper function
-         # The specific exception type might vary depending on what _sync_create raises
          raise HTTPException(status_code=500, detail=f"Failed to create conversation: {str(e)}")
 
 
-@router.get("/conversation/{conversation_id}", response_model=dict)
-async def check_conversation(conversation_id: str, db: Session = Depends(get_db)): # Inject DB Session
-    """
-    Checks if a conversation ID exists in the database.
-    """
-    def _sync_check_conversation(): # Helper for sync DB query
-        # Query the database for the conversation
-        return db.query(db_models.Conversation).filter(db_models.Conversation.id == conversation_id).first()
+
+@router.get("/conversations", response_model=list[ConversationInfo])
+async def list_conversations(
+    # Define as Query parameters with defaults
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0), # Default 0, must be >= 0
+    limit: int = Query(10, ge=1, le=100) # Default 10, must be 1-100
+):
+    """Lists existing conversations, ordered by creation date descending."""
+    def _sync_list():
+        logger.info(f"DB Query: Fetching conversations with skip={skip}, limit={limit}") # Log params received
+        return db.query(db_models.Conversation).order_by(db_models.Conversation.created_at.desc()).offset(skip).limit(limit).all()
 
     try:
-        # Wrap the synchronous database query
-        db_conversation = await run_in_threadpool(_sync_check_conversation)
+        conversations = await run_in_threadpool(_sync_list)
+        return conversations
+    except Exception as e:
+        logger.error(f"Error listing conversations (skip={skip}, limit={limit}): {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to retrieve conversations")
+
+
+# Modified to get full details including messages
+@router.get("/conversations/{conversation_id}", response_model=ConversationDetail)
+async def get_conversation_details(conversation_id: str, db: Session = Depends(get_db)):
+    """Gets details and all messages for a specific conversation."""
+    def _sync_get_details():
+        # Use joinedload to efficiently fetch messages along with conversation
+        # from sqlalchemy.orm import joinedload # Import if needed
+        # return db.query(db_models.Conversation).options(joinedload(db_models.Conversation.messages)).filter(db_models.Conversation.id == conversation_id).first()
+        # Simpler query first, relies on relationship loading (might be N+1 query issue later)
+         conv = db.query(db_models.Conversation).filter(db_models.Conversation.id == conversation_id).first()
+         if conv:
+             # Explicitly load messages if not eager loaded (or access triggers load)
+             # print(f"Messages loaded: {len(conv.messages)}") # Debug log
+             return conv
+         return None
+
+
+    try:
+        db_conversation = await run_in_threadpool(_sync_get_details)
         if not db_conversation:
             raise HTTPException(status_code=404, detail="Conversation ID not found")
-        created_at_iso = None
-        if db_conversation.created_at:
-             # Ensure it's timezone-aware if your DB stores timezone info
-             if db_conversation.created_at.tzinfo is None:
-                  # If naive, assume UTC or local timezone as appropriate
-                  # For server_default=func.now() on SQLite without timezone=True, it might be naive
-                  # Let's assume UTC for consistency if naive
-                  created_at_utc = db_conversation.created_at.replace(tzinfo=datetime.timezone.utc)
-                  created_at_iso = created_at_utc.isoformat()
-             else:
-                  # If already timezone-aware, just format it
-                  created_at_iso = db_conversation.created_at.isoformat()
-        # Return relevant info, including creation time from DB
-        return {
-            "status": "exists",
-            "conversation_id": conversation_id,
-            "created_at": created_at_iso # Return the ISO string
-        }
+        # Pydantic should handle the nested messages serialization via ConversationDetail model
+        return db_conversation
     except HTTPException as http_exc:
-         # Re-raise known HTTP exceptions (like the 404)
          raise http_exc
     except Exception as e:
-         # Handle potential errors during the DB query within the threadpool
          logger.error(f"Error checking conversation {conversation_id} in DB: {e}", exc_info=True)
          raise HTTPException(status_code=500, detail=f"Database error checking conversation: {str(e)}")
 
-
-@router.post("", response_model=ChatResponse)
+@router.post("/message", response_model=ChatResponse)
 async def handle_chat_message(
     request: ChatRequest,
     db: Session = Depends(get_db), # Inject DB Session
@@ -199,9 +223,10 @@ async def handle_chat_message(
         # Filter to only include messages from the same conversation
         conv_filter = Filter(
             must=[
-                FieldCondition(key="payload.conversation_id", match=MatchValue(value=conversation_id))
+                FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id))
             ]
         )
+        logger.info(f"Filter for conversation {conversation_id}: {conv_filter}")
         logger.info("Searching relevant chunks in 'collection_uploads'...")
         upload_search_results = qdrant.search_points(
             collection_name="collection_uploads",
@@ -214,7 +239,7 @@ async def handle_chat_message(
             collection_name="collection_chat_history",
             query_vector=query_vector,
             query_filter=conv_filter,
-            limit=2 # Tune this limit
+            limit=3 # Tune this limit
         )
 
         # 5. Combine and Format Context
@@ -255,12 +280,12 @@ async def handle_chat_message(
             else:
                 logger.warning(f"    History hit {i+1} payload did NOT contain valid 'text'. Payload was: {hit.payload}")
 
-            # Combine, putting history first might be slightly better contextually
-            context_chunks = history_chunks_temp + context_chunks
-            context_string = "\n\n---\n\n".join(context_chunks)
-            logger.info(f"Combined context string length: {len(context_string)}")
-            if not context_string.strip():
-                context_string = "No specific context found from previous messages or documents."
+        # Combine, putting history first might be slightly better contextually
+        context_chunks = history_chunks_temp + context_chunks
+        context_string = "\n\n---\n\n".join(context_chunks)
+        logger.info(f"Combined context string length: {len(context_string)}")
+        if not context_string.strip():
+            context_string = "No specific context found from previous messages or documents."
 
 
         # 6. Construct the LLM Prompt (Refine as needed)
@@ -356,3 +381,36 @@ Assistant Response:"""
 
          logger.error(f"Unhandled error during chat processing for conversation {conversation_id}: {e}", exc_info=True)
          raise HTTPException(status_code=500, detail=f"An internal error occurred during chat processing: {str(e)}")
+    
+# --- Endpoint to get uploaded files for a conversation ---
+class UploadedFileInfo(BaseModel):
+     filename: str
+     doc_id: str # The unique ID assigned during upload
+     uploaded_at: datetime.datetime # Timestamp of upload
+
+     class Config:
+         from_attributes = True
+         # from_attributes=True is used in Pydantic V2 to enable ORM-like behavior
+
+# Placeholder - requires storing file info persistently or querying Qdrant efficiently
+@router.get("/conversations/{conversation_id}/files", response_model=list[UploadedFileInfo])
+async def list_uploaded_files(conversation_id: str, db: Session = Depends(get_db)):
+    """
+    Lists files uploaded specifically for this conversation from the database.
+    """
+    def _sync_get_files():
+         logger.info(f"Querying DB for uploaded files for conversation {conversation_id}")
+         return db.query(db_models.UploadedDocument)\
+                  .filter(db_models.UploadedDocument.conversation_id == conversation_id)\
+                  .order_by(db_models.UploadedDocument.uploaded_at.asc())\
+                  .all()
+
+    try:
+        uploaded_docs = await run_in_threadpool(_sync_get_files)
+        logger.info(f"Found {len(uploaded_docs)} uploaded file records for conversation {conversation_id}")
+        # Pydantic will automatically convert the list of UploadedDocument objects
+        # into the list[UploadedFileInfo] response structure
+        return uploaded_docs
+    except Exception as e:
+         logger.error(f"Error fetching uploaded files for conversation {conversation_id}: {e}", exc_info=True)
+         raise HTTPException(status_code=500, detail="Failed to retrieve uploaded files")

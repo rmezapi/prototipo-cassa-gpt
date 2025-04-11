@@ -3,6 +3,11 @@ import uuid
 import logging
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Depends
 from qdrant_client.http.models import PointStruct
+import datetime
+from sqlalchemy.orm import Session
+from models import chat_models as db_models
+from models.database import get_db
+from fastapi.concurrency import run_in_threadpool
 
 # --- Import Services ---
 # Import Qdrant Service and its dependency getter
@@ -43,10 +48,9 @@ router = APIRouter(
 
 @router.post("", status_code=201)
 async def upload_and_process_file(
-    # Declare File and Form fields FIRST
+    db: Session = Depends(get_db),
     file: UploadFile = File(...),
     conversation_id: str = Form(...),
-    # Declare Dependencies AFTER
     qdrant = Depends(get_qdrant_service),
     processor = Depends(get_doc_processor),
     embed_svc = Depends(get_embedding_service),
@@ -155,6 +159,49 @@ async def upload_and_process_file(
     except Exception as e:
         logger.error(f"Failed to add points to Qdrant for {filename}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to store document chunks: {str(e)}")
+    
+    # Store metadata and system message in db
+    system_message_text = f"Processed file: {filename}"
+    system_message_id = str(uuid.uuid4())
+
+    db_uploaded_doc = db_models.UploadedDocument(
+        conversation_id=conversation_id,
+        doc_id=doc_id, # Store the unique doc ID
+        filename=filename,
+        # uploaded_at handled by default
+    )
+    db_system_message = db_models.Message(
+        id=system_message_id,
+        conversation_id=conversation_id,
+        speaker="system", # Mark as system message
+        text=system_message_text,
+        related_doc_id=doc_id # Link message to the document record
+        # created_at handled by default
+    )
+
+    def _sync_db_save_upload_meta():
+        try:
+            logger.info(f"Adding upload metadata and system message to DB for doc_id {doc_id}")
+            db.add(db_uploaded_doc)
+            db.add(db_system_message)
+            db.commit()
+            # Refresh might not be needed here unless returning the created objects
+            # db.refresh(db_uploaded_doc)
+            # db.refresh(db_system_message)
+        except Exception as db_err:
+            db.rollback()
+            logger.error(f"Failed to save upload metadata/message to DB: {db_err}", exc_info=True)
+            # This is tricky - Qdrant succeeded but DB failed.
+            # Raise an error indicating partial success? Or just log?
+            # Let's raise for now during dev.
+            raise Exception(f"DB Error saving upload metadata: {str(db_err)}") from db_err
+
+    try:
+         await run_in_threadpool(_sync_db_save_upload_meta)
+         logger.info("Successfully saved upload metadata and system message to DB.")
+    except Exception as e:
+         # If DB save fails, return a 500 but maybe mention Qdrant success?
+         raise HTTPException(status_code=500, detail=f"File indexed in vector store, but failed to save metadata to DB: {str(e)}")
 
     return {
         "message": "File processed and indexed successfully.",

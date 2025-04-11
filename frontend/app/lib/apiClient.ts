@@ -81,8 +81,8 @@ export async function fetchApi<T = any>( // Generic type T for response data
 // --- Specific API Functions (Examples) ---
 
 // Function to create a new conversation
-export const createConversation = (): Promise<{ conversation_id: string }> => {
-  return fetchApi<{ conversation_id: string }>("/chat/conversation", {
+export const createConversation = (): Promise<{ id: string }> => {
+  return fetchApi<{ id: string }>("/chat/conversations", {
     method: "POST",
     body: JSON.stringify({}), // Send empty body if required by endpoint
   });
@@ -107,7 +107,7 @@ interface ChatResponsePayload {
 
 // Function to send a chat message
 export const sendChatMessage = (payload: ChatRequestPayload): Promise<ChatResponsePayload> => {
-    return fetchApi<ChatResponsePayload>("/chat", {
+    return fetchApi<ChatResponsePayload>("/chat/message", {
         method: "POST",
         body: JSON.stringify(payload),
     });
@@ -211,3 +211,24 @@ export const uploadFile = async (
         throw new Error(errorMessage); // Re-throw as a standard Error
     }
 }
+
+// --- Add types based on backend Pydantic models ---
+export interface ConversationInfo { id: string; created_at: string; }
+interface MessageInfo { id: string; speaker: string; text: string; created_at: string; }
+interface ConversationDetail extends ConversationInfo { messages: MessageInfo[]; }
+interface UploadedFileInfo { filename: string; doc_id: string; }
+
+// Update listConversations to accept pagination params
+export const listConversations = (skip: number = 0, limit: number = 5): Promise<ConversationInfo[]> => {
+  // Append query parameters to the URL
+  return fetchApi<ConversationInfo[]>(`/chat/conversations?skip=${skip}&limit=${limit}`);
+};
+
+export const getConversationDetails = (conversationId: string): Promise<ConversationDetail> => {
+    return fetchApi<ConversationDetail>(`/chat/conversations/${conversationId}`);
+};
+
+export const listUploadedFiles = (conversationId: string): Promise<UploadedFileInfo[]> => {
+    // Pointing to the placeholder endpoint for now
+    return fetchApi<UploadedFileInfo[]>(`/chat/conversations/${conversationId}/files`);
+};

@@ -32,6 +32,14 @@ except ImportError as e:
      together_service = None
      together_status = "Import Failed"
 
+try:
+    from services.embedding_service import embedding_service
+    embedding_status = "Initialized" if embedding_service else "Failed to Initialize"
+except ImportError as e:
+     logging.critical(f"Failed to import Embedding service: {e}", exc_info=True)
+     embedding_service = None
+     embedding_status = "Import Failed"
+
 # Load environment variables from .env file
 load_dotenv()
 

@@ -1,10 +1,10 @@
 # backend/services/qdrant_service.py
-from http.client import HTTPException
 import os
 import logging
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from dotenv import load_dotenv
+from fastapi import HTTPException
 
 load_dotenv() # Load environment variables
 
@@ -86,18 +86,21 @@ class QdrantService:
 
     def search_points(self, collection_name: str, query_vector: list[float], limit: int = 5, query_filter: models.Filter = None):
         """Searches for points in a collection similar to the query vector."""
+        print(f"DEBUG: INSIDE QdrantService.search_points for collection '{collection_name}'. ARGS RECEIVED.")
+        print(f"DEBUG: query_filter type: {type(query_filter)}")
         try:
-            search_result = self.client.search(
+            logger.info(f"Searching in {collection_name} for vector: {query_vector[:5]}...")  # Log first 5 elements of the vector
+            search_result = self.client.query_points(
                 collection_name=collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=query_filter, # Apply filters (e.g., for conversation_id)
                 limit=limit
-            )
+            ).points
             logger.info(f"Search in {collection_name} found {len(search_result)} results.")
             return search_result
         except Exception as e:
             logger.error(f"Failed to search points in {collection_name}: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to search data in {collection_name}")
+            raise HTTPException(status_code=500, detail=f"Failed to search data in {collection_name}") # type: ignore
 
 # --- Singleton Pattern ---
 # Create a single instance of the service to be reused across the application

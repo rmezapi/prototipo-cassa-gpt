@@ -9,6 +9,8 @@ import {
   Scripts,
   ScrollRestoration,
 } from "@remix-run/react";
+// --- Import the Tailwind CSS file ---
+import  "./tailwind.css"; // Import the CSS file
 
 // Optional: Import a global CSS file if you create one
 // import styles from "./tailwind.css"; // Example if using Tailwind
@@ -16,7 +18,7 @@ import {
 
 // Add links to any global stylesheets here
 export const links: LinksFunction = () => [
-  ...(cssBundleHref ? [{ rel: "stylesheet", href: cssBundleHref }] : []),
+  ...(cssBundleHref ? [{ rel: "stylesheet", href: cssBundleHref }] : [])
   // { rel: "stylesheet", href: styles }, // Example
   // { rel: "stylesheet", href: globalStyles }, // Example
 ];
@@ -37,7 +39,6 @@ export default function App() {
         {/* Remix utilities */}
         <ScrollRestoration />
         <Scripts />
-        <LiveReload />
       </body>
     </html>
   );
