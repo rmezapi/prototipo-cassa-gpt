@@ -1,30 +1,24 @@
 # backend/models/chat_models.py
 import uuid
-import datetime # Ensure datetime is imported
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Enum # Added Enum
+import datetime
+from typing import List, Optional # Import List and Optional
+from pydantic import BaseModel, Field # Import Pydantic components
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey # Removed Enum as not used
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base # Import Base from database.py
 
-# Define status Enum for documents
-# Using simple strings now, Enum adds slight complexity for SQLite/Alembic sometimes
-# class DocumentStatus(str, enum.Enum):
-#     PROCESSING = "processing"
-#     COMPLETED = "completed"
-#     ERROR = "error"
-
+# --- SQLAlchemy Models (Database Tables) ---
 
 class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(String, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # --- ADD Foreign Key and Relationship to KnowledgeBase ---
     knowledge_base_id = Column(String, ForeignKey("knowledge_bases.id"), nullable=True, index=True)
-    knowledge_base = relationship("KnowledgeBase", back_populates="conversations")
-    # --- END ADD ---
 
+    # Relationships
+    knowledge_base = relationship("KnowledgeBase", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", lazy="selectin")
     uploaded_documents = relationship("UploadedDocument", back_populates="conversation", cascade="all, delete-orphan")
 
@@ -37,26 +31,25 @@ class Message(Base):
     speaker = Column(String, nullable=False) # 'user', 'ai', 'system'
     text = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # This field links a 'system' message about an upload to the KB document record
     related_doc_id = Column(String, ForeignKey("knowledge_base_documents.qdrant_doc_id"), nullable=True, index=True)
 
+    # Relationships
     conversation = relationship("Conversation", back_populates="messages")
 
 
-class UploadedDocument(Base): # This is for session uploads, distinct from KB docs
-    __tablename__ = "uploaded_documents" # Keep this table for session-specific uploads
+class UploadedDocument(Base): # Session uploads
+    __tablename__ = "uploaded_documents"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) # Row ID
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False, index=True)
-    # Unique ID grouping chunks in Qdrant 'collection_uploads'
-    doc_id = Column(String, nullable=False, index=True) # Not necessarily unique across all uploads
+    doc_id = Column(String, nullable=False, index=True)
     filename = Column(String, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Relationships
     conversation = relationship("Conversation", back_populates="uploaded_documents")
 
 
-# --- NEW KnowledgeBase MODEL ---
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
 
@@ -64,30 +57,101 @@ class KnowledgeBase(Base):
     name = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    # Add updated_at?
 
-    # Relationship back to Conversations linked to this KB
+    # Relationships
     conversations = relationship("Conversation", back_populates="knowledge_base")
-    # Relationship to documents within this KB
     documents = relationship("KnowledgeBaseDocument", back_populates="knowledge_base", cascade="all, delete-orphan")
 
 
-# --- NEW KnowledgeBaseDocument MODEL ---
 class KnowledgeBaseDocument(Base):
     __tablename__ = "knowledge_base_documents"
 
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4())) # Row ID
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     knowledge_base_id = Column(String, ForeignKey("knowledge_bases.id"), nullable=False, index=True)
-
-    # Unique ID grouping chunks for THIS document in Qdrant 'collection_kb'
-    # Should be unique within the KB, maybe globally? Let's make globally unique for simplicity.
     qdrant_doc_id = Column(String, nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
-
     filename = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="processing", index=True) # Use simple strings: "processing", "completed", "error"
-    # status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PROCESSING, index=True) # If using Enum
-    error_message = Column(Text, nullable=True) # Store error details if status is 'error'
+    status = Column(String, nullable=False, default="processing", index=True) # "processing", "completed", "error"
+    error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
-    # Add chunk_count, file_size, file_type later?
 
+    # Relationships
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")
+
+
+# --- Pydantic Schemas (API Data Transfer Objects) ---
+
+# Base schema for KB info (used nested)
+class KnowledgeBaseInfoSchema(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+# Schema for individual message info
+class MessageInfoSchema(BaseModel):
+    id: str
+    speaker: str # Consider Enum('user', 'ai', 'system') if needed
+    text: str
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+# Schema for session uploaded document info
+class UploadedFileInfoSchema(BaseModel):
+    id: str
+    filename: str
+    doc_id: str
+    uploaded_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+# Main schema for Conversation Details endpoint response
+class ConversationDetailSchema(BaseModel):
+    id: str
+    created_at: datetime.datetime
+    messages: List[MessageInfoSchema] = []
+    knowledge_base_id: Optional[str] = None # ID of the linked KB
+    knowledge_base: Optional[KnowledgeBaseInfoSchema] = Field(None, description="Details of the linked Knowledge Base, if any") # Nested KB details
+    # Optionally include session uploads if needed in this view
+    # uploaded_documents: List[UploadedFileInfoSchema] = []
+
+    class Config:
+        from_attributes = True # Enable ORM mode compatibility
+
+# Basic schema for Conversation list endpoint
+class ConversationInfoSchema(BaseModel):
+    id: str
+    created_at: datetime.datetime
+    knowledge_base_id: Optional[str] = None
+    # Optionally add knowledge_base name here too if needed for list view
+    # knowledge_base_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# Schema for creating a conversation
+class ConversationCreatePayloadSchema(BaseModel):
+    knowledge_base_id: Optional[str] = Field(None, description="Optional ID of the Knowledge Base to link to this conversation.")
+
+# Schema for chat request payload
+class ChatRequestSchema(BaseModel):
+    query: str
+    conversation_id: str
+
+# Schema for retrieved source info in chat response
+class SourceInfoSchema(BaseModel):
+    type: str
+    filename: Optional[str] = None
+    score: Optional[float] = None
+    text: Optional[str] = None
+
+# Schema for chat response payload
+class ChatResponseSchema(BaseModel):
+    response: str
+    conversation_id: str
+    sources: List[SourceInfoSchema] = []

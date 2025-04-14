@@ -13,7 +13,7 @@ import {
     sendChatMessage,
     uploadFile,
     getConversationDetails,
-    listUploadedFiles,
+    listSessionUploadedFiles,
     listConversations,
     createConversation,
     type ConversationInfo,
@@ -48,7 +48,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
         // Fetch details (which include messages) and files
         const [details, files] = await Promise.all([
              getConversationDetails(conversationId), // This endpoint MUST return messages
-             listUploadedFiles(conversationId)
+             listSessionUploadedFiles(conversationId)
         ]);
 
         // Map messages from backend structure to frontend Message interface
