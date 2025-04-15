@@ -1,7 +1,14 @@
-# netlify.toml (Place in monorepo root)
+# netlify.toml (in monorepo root) - Attempt 4
 
 [build]
-  # Base directory for the build context
+  # Run build commands from frontend directory
   base    = "frontend/"
-  # Command to run inside the base directory
-  command = "pwd && ls && npm i && CI=false npm run build"
+  # Build command
+  command = "npm run build"
+  # *** POINT TO THE ADAPTER'S EXPECTED OUTPUT DIRECTORY ***
+  # The Remix Netlify adapter usually creates a .netlify folder
+  # within the 'base' directory.
+  publish = ".netlify/" 
+
+# OMIT [functions] block - Let the adapter and Netlify figure it out
+# from the structure within the publish directory.
