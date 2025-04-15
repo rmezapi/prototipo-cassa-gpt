@@ -95,6 +95,7 @@ origins = [
     "http://localhost:8000", # Allow Swagger UI/API itself if needed
     # --- Add your deployed frontend origin (Netlify URL) when ready ---
     "https://cassagpt-demo.netlify.app/",
+    "https://prototipo-cassa-gpt-backend.onrender.com"
 ]
 # If your backend might be deployed too, add its origin if different
 # origins.append("https://your-backend-url.onrender.com")
