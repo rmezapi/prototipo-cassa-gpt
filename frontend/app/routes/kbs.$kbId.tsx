@@ -32,7 +32,8 @@ import {
   XCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  HomeIcon,
 } from "@heroicons/react/24/outline";
 
 // --- Loader Function ---
@@ -91,7 +92,7 @@ const POLLING_INTERVAL_MS = 5000; // Poll every 5 seconds
 
 export default function KnowledgeBaseDetailView() {
   const { kbDetails } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher<{ success: boolean; error: string | null; document: KBDocumentInfo | null }>();
+  const fetcher = useFetcher<{ success: boolean; error: string | null; document: KnowledgeBaseDocumentInfo | null }>();
   const revalidator = useRevalidator();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -215,7 +216,12 @@ export default function KnowledgeBaseDetailView() {
     <div className="p-4 md:p-6 max-w-4xl mx-auto">
         {/* Back Link and Title */}
         <div className="mb-6 pb-4 border-b border-gray-200">
-            <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800 mb-2"> <ChevronLeftIcon className="h-4 w-4 mr-1" /> Back to Knowledge Bases </Link>
+            <nav className="mb-6">
+            <Link to="/" className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800 mb-2">
+                <HomeIcon className="h-4 w-4 mr-1"/>  Home
+            </Link>
+            </nav>
+            <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800 mb-2"> <ChevronLeftIcon className="h-4 w-4 mr-1" /> More Knowledge Bases </Link>
             <h1 className="text-xl md:text-2xl font-semibold text-gray-800 flex items-center"> <CircleStackIcon className="h-6 w-6 mr-2 text-blue-600 flex-shrink-0" /> <span className="truncate">{kbDetails.name}</span> </h1>
             {kbDetails.description && ( <p className="mt-1 text-sm text-gray-500">{kbDetails.description}</p> )}
             <p className="mt-1 text-xs text-gray-400">ID: {kbDetails.id}</p>

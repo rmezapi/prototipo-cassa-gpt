@@ -87,9 +87,36 @@ export default function Index() {
   const [showKbForm, setShowKbForm] = useState(false);
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
+  const [conversationList, setConversationList] = useState<ConversationInfo[]>(conversations.filter((conv): conv is ConversationInfo => conv !== null));
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [canLoadMoreConversations, setCanLoadMoreConversations] = useState(conversations.length === 10);
+
 
   const isCreatingChat = navigation.state === "submitting" && navigation.formData?.get("intent") === "newChat";
   const isCreatingKb = kbCreateFetcher.state !== 'idle';
+
+  // Create a map for quick KB name lookup
+  const kbNameMap = new Map<string, string>();
+    knowledgeBases.forEach(kb => {
+      if (kb) // Skip if id or name is missing
+        kbNameMap.set(kb.id, kb.name);
+  });
+
+  // Function to load more conversations (similar to chat.$conversationId.tsx)
+  const loadMoreConversations = async () => {
+    if (isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const newConvos = await listConversations(conversationList.length, 10);
+      setConversationList(prev => [...prev, ...newConvos]);
+      setCanLoadMoreConversations(newConvos.length === 10);
+    } catch (error: any) {
+      console.error("Error loading more conversations:", error);
+      setCanLoadMoreConversations(false);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const handleCreateKb = (event: React.FormEvent<HTMLFormElement>) => {
      event.preventDefault(); if (!newKbName.trim() || isCreatingKb) return;
@@ -111,120 +138,209 @@ export default function Index() {
 
 
   return (
-    <div className="flex flex-col items-center min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 p-4 sm:p-6 space-y-6 sm:space-y-8">
-
-      {/* Welcome/Create Chat Card */}
-      <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md text-center max-w-md w-full">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4"> Welcome to CassaGPT </h1>
-        <p className="text-gray-600 mb-6 text-sm sm:text-base"> Start a new chat or select an existing one below. </p>
-        <Form method="post" className="space-y-4">
-            <input type="hidden" name="intent" value="newChat" />
-            <div>
-                 <label htmlFor="kb-select" className="block text-sm font-medium text-gray-700 mb-1 text-left"> Select Knowledge Base (Optional) </label>
-                 <select id="kb-select" name="kbId" value={selectedKbId} onChange={(e) => setSelectedKbId(e.target.value)} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
-                    <option value="none">-- None --</option>
-                    {knowledgeBases?.map(kb => ( <option key={kb.id} value={kb.id}> {kb.name} </option> ))}
-                 </select>
-            </div>
-            <button type="submit" className={`w-full px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out`} disabled={isCreatingChat}>
-                {isCreatingChat ? ( <span className="flex items-center justify-center"> <ArrowPathIcon className="animate-spin h-5 w-5 mr-2" /> Starting... </span> ) : "Start New Conversation"}
-            </button>
-        </Form>
-      </div>
-
-      {/* Create KB Section */}
-      <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center">
-           {!showKbForm ? (
-                <button type="button" onClick={() => setShowKbForm(true)} className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                   <PlusIcon className="-ml-1 mr-2 h-5 w-5 text-gray-400" /> Create New Knowledge Base
-                </button>
-           ) : (
-               <kbCreateFetcher.Form method="post" onSubmit={handleCreateKb} className="space-y-3 text-left">
-                   <input type="hidden" name="intent" value="newKB" />
-                    <h3 className="text-lg font-medium text-gray-800 mb-2">New Knowledge Base</h3>
-                    <div> <label htmlFor="kbName" className="sr-only">Name</label> <input type="text" name="kbName" id="kbName" value={newKbName} onChange={e => setNewKbName(e.target.value)} required className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" placeholder="Knowledge Base Name" /> </div>
-                    <div> <label htmlFor="kbDescription" className="sr-only">Description</label> <textarea name="kbDescription" id="kbDescription" rows={2} value={newKbDescription} onChange={e => setNewKbDescription(e.target.value)} className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none" placeholder="Optional Description..." /> </div>
-                    {kbCreateFetcher.data?.error && <p className="text-xs text-red-600">{kbCreateFetcher.data.error}</p>}
-                    <div className="flex justify-end gap-3">
-                        <button type="button" onClick={() => setShowKbForm(false)} className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">Cancel</button>
-                        <button type="submit" disabled={isCreatingKb || !newKbName.trim()} className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"> {isCreatingKb ? (<><ArrowPathIcon className="animate-spin h-4 w-4 mr-2"/>Creating...</>) : "Create KB"} </button>
-                    </div>
-               </kbCreateFetcher.Form>
-           )}
-      </div>
-
-      {/* Existing Knowledge Bases List */}
-      {knowledgeBases && knowledgeBases.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-            <h2 className="text-lg font-semibold text-gray-700 mb-4 border-b pb-2 flex items-center">
-                <CircleStackIcon className="h-5 w-5 mr-2 text-gray-400"/> Existing Knowledge Bases
-            </h2>
-            <ul className="space-y-2 max-h-60 overflow-y-auto">
-                {knowledgeBases.map(kb => (
-                    <li key={kb.id}>
-                        <Link to={`/kbs/${kb.id}`} className="block p-3 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-800 hover:text-blue-700 transition duration-150 ease-in-out group" prefetch="intent" title={`View KB: ${kb.name}`}>
-                           <div className="flex justify-between items-center">
-                                <span className="flex flex-col min-w-0 mr-2">
-                                    <span className="font-medium text-sm truncate">{kb.name}</span>
-                                    <span className="text-xs text-gray-500 truncate italic">{kb.description || 'No description'}</span>
-                                </span>
-                                <ArrowRightIcon className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0"/>
-                           </div>
-                        </Link>
-                    </li>
-                ))}
-            </ul>
-        </div>
-      )}
-
-      {/* Recent Conversations List - Updated */}
-      {conversations && conversations.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-            <h2 className="text-lg font-semibold text-gray-700 mb-4 border-b pb-2 flex items-center">
-                <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2 text-gray-400"/> Recent Conversations
-            </h2>
-            <ul className="space-y-2 max-h-60 overflow-y-auto">
-                {conversations.map(conv => (
-                    <li key={conv.id}>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row gap-6">
+        {/* Left Column: Recent Conversations with Load More */}
+        <div className="bg-white p-6 rounded-lg shadow-md w-full sm:w-1/3 max-h-[80vh] overflow-y-auto">
+          <h2 className="text-lg font-semibold text-gray-700 mb-4 border-b pb-2 flex items-center">
+            <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2 text-gray-400"/> Recent Conversations
+          </h2>
+          <ul className="space-y-2">
+            {conversationList.map(conv => {
+              const kbName = conv.knowledge_base_id ? kbNameMap.get(conv.knowledge_base_id) : null;
+              return (
+                <li key={conv.id}>
+                  <Link
+                    to={`/chat/${conv.id}`}
+                    className="block p-3 rounded-md text-sm bg-gray-50 hover:bg-gray-100 text-gray-800 hover:text-blue-800 transition duration-150 ease-in-out"
+                    prefetch="intent"
+                    title={`Chat from ${new Date(conv.created_at).toLocaleString()}${kbName ? ` (KB: ${kbName})` : ''}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <ChatBubbleLeftRightIcon className="h-4 w-4 text-gray-400"/>
+                        <span className="font-mono text-xs truncate">Chat: {conv.id.substring(0, 8)}...</span>
+                      </div>
+                      {kbName && conv.knowledge_base_id && (
                         <Link
-                            to={`/chat/${conv.id}`}
-                            className="block p-3 rounded-md text-sm bg-gray-50 hover:bg-gray-100 text-gray-800 hover:text-blue-800 transition duration-150 ease-in-out"
-                            prefetch="intent"
-                            title={`Chat from ${new Date(conv.created_at).toLocaleString()}${conv.knowledge_base ? ` (KB: ${conv.knowledge_base.name})` : ''}`}
+                          to={`/kbs/${conv.knowledge_base_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 hover:bg-blue-200 hover:text-blue-800 rounded text-xs truncate"
+                          title={`Knowledge Base: ${kbName}`}
                         >
-                            <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-2 min-w-0 mr-2">
-                                    <ChatBubbleLeftRightIcon className="h-4 w-4 flex-shrink-0 text-gray-400"/>
-                                    <span className="font-mono text-xs truncate">ID: {conv.id.substring(0, 8)}...</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs flex-shrink-0">
-                                    {/* Display KB Name Badge */}
-                                    {conv.knowledge_base && (
-                                        <span className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs truncate" title={`Knowledge Base: ${conv.knowledge_base.name}`}>
-                                            <CircleStackIcon className="h-3 w-3 flex-shrink-0" />
-                                            <span className="truncate">{conv.knowledge_base.name}</span>
-                                        </span>
-                                    )}
-                                    <span className="text-gray-500 whitespace-nowrap">
-                                        {new Date(conv.created_at).toLocaleDateString()}
-                                    </span>
-                                </div>
-                            </div>
+                          <CircleStackIcon className="h-3 w-3"/>
+                          <span className="truncate">{kbName}</span>
                         </Link>
-                    </li>
-                ))}
-            </ul>
+                      )}
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {canLoadMoreConversations && (
+            <div className="mt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={loadMoreConversations}
+                disabled={isLoadingMore}
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded text-xs font-medium text-gray-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 disabled:opacity-50 transition-opacity duration-150"
+              >
+                {isLoadingMore ? (<ArrowPathIcon className="animate-spin h-3 w-3 mr-1"/>) : "Show More"}
+              </button>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* Loader Error Display */}
-      {loaderError && (
-         <div className="bg-red-50 p-4 rounded-md border border-red-200 w-full max-w-md text-sm text-red-700">
-             <strong>Error:</strong> {loaderError}
-         </div>
-      )}
+        {/* Right Column: Welcome/New Conversation and KB Section */}
+        <div className="flex flex-col gap-6 w-full sm:w-2/3">
+          {/* Welcome & New Conversation Form */}
+          <div className="bg-white p-6 sm:p-8 rounded-lg shadow-md text-center">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-4"> Welcome to CassaGPT </h1>
+            <p className="text-gray-600 mb-6 text-sm sm:text-base"> Start a new chat or select an existing one below. </p>
+            <Form method="post" className="space-y-4">
+              <input type="hidden" name="intent" value="newChat" />
+              <div>
+                <label htmlFor="kb-select" className="block text-sm font-medium text-gray-700 mb-1 text-left">
+                  Select Knowledge Base (Optional)
+                </label>
+                <select
+                  id="kb-select"
+                  name="kbId"
+                  value={selectedKbId}
+                  onChange={(e) => setSelectedKbId(e.target.value)}
+                  className="text-center bg-gray-100 mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md mx-auto shadow-sm"
+                >
+                  <option value="none">-- None --</option>
+                  {knowledgeBases?.map(kb => (
+                    <option key={kb.id} value={kb.id}>{kb.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="w-full px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out"
+                disabled={isCreatingChat}
+              >
+                {isCreatingChat ? (
+                  <span className="flex items-center justify-center">
+                    <ArrowPathIcon className="animate-spin h-5 w-5 mr-2"/>
+                    Starting...
+                  </span>
+                ) : "Start New Conversation"}
+              </button>
+            </Form>
+          </div>
 
-      <footer className="pt-4 text-sm text-gray-500"> Powered by AI </footer>
+          {/* Existing Knowledge Bases with Create KB Button in header */}
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex items-center justify-between mb-4 border-b pb-2">
+              <h2 className="text-lg font-semibold text-gray-700 flex items-center">
+                <CircleStackIcon className="h-5 w-5 mr-2 text-gray-400"/>
+                Existing Knowledge Bases
+              </h2>
+              {!showKbForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowKbForm(true)}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <PlusIcon className="-ml-1 mr-1 h-4 w-4 text-gray-400"/> New KB
+                </button>
+              )}
+            </div>
+            {showKbForm && (
+              <kbCreateFetcher.Form method="post" onSubmit={handleCreateKb} className="space-y-3 mb-4">
+                <input type="hidden" name="intent" value="newKB" />
+                <h3 className="text-lg font-medium text-gray-800 mb-2">New Knowledge Base</h3>
+                <div>
+                  <label htmlFor="kbName" className="sr-only">Name</label>
+                  <input
+                    type="text"
+                    name="kbName"
+                    id="kbName"
+                    value={newKbName}
+                    onChange={e => setNewKbName(e.target.value)}
+                    required
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    placeholder="Knowledge Base Name"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="kbDescription" className="sr-only">Description</label>
+                  <textarea
+                    name="kbDescription"
+                    id="kbDescription"
+                    rows={2}
+                    value={newKbDescription}
+                    onChange={e => setNewKbDescription(e.target.value)}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm resize-none"
+                    placeholder="Optional Description..."
+                  />
+                </div>
+                {kbCreateFetcher.data?.error && (
+                  <p className="text-xs text-red-600">{kbCreateFetcher.data.error}</p>
+                )}
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowKbForm(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCreatingKb || !newKbName.trim()}
+                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                  >
+                    {isCreatingKb ? (
+                      <>
+                        <ArrowPathIcon className="animate-spin h-4 w-4 mr-2"/>
+                        Creating...
+                      </>
+                    ) : "Create KB"}
+                  </button>
+                </div>
+              </kbCreateFetcher.Form>
+            )}
+
+            <ul className="space-y-2 max-h-60 overflow-y-auto">
+              {knowledgeBases.map(kb => (
+                <li key={kb.id}>
+                  <Link
+                    to={`/kbs/${kb.id}`}
+                    className="block p-3 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-800 hover:text-blue-700 transition duration-150 ease-in-out group"
+                    prefetch="intent"
+                    title={`View KB: ${kb.name}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="flex flex-col min-w-0 mr-2">
+                        <span className="font-medium text-sm truncate">{kb.name}</span>
+                        <span className="text-xs text-gray-500 truncate italic">{kb.description || 'No description'}</span>
+                      </span>
+                      <ArrowRightIcon className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition-colors"/>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Loader Error Display */}
+          {loaderError && (
+            <div className="bg-red-50 p-4 rounded-md border border-red-200 text-sm text-red-700">
+              <strong>Error:</strong> {loaderError}
+            </div>
+          )}
+
+          
+        </div>
+      </div>
+      <footer className="pt-4 text-sm text-gray-500 text-center"> 
+            <p>Demo for Educational Purposes only</p>
+            <p> Created by <em>Rodrigo Meza</em> for <strong><em>Grupo CASSA</em></strong> </p>
+      </footer>
     </div>
   );
 }

@@ -100,7 +100,7 @@ export const sendChatMessage = (payload: ChatRequestPayload): Promise<ChatRespon
 };
 
 // --- Session Upload Types & Functions ---
-interface SessionUploadResponsePayload {
+export interface SessionUploadResponsePayload {
     message: string;
     filename: string;
     doc_id?: string;

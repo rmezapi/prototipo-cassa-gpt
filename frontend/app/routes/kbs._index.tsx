@@ -3,7 +3,7 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { useLoaderData, Link, NavLink } from "@remix-run/react"; // Added NavLink for potential sidebar highlighting
 import { listKnowledgeBases, type KnowledgeBaseInfo } from "~/lib/apiClient";
-import { PlusIcon, CircleStackIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, CircleStackIcon, HomeIcon } from "@heroicons/react/24/outline";
 
 // Loader: Fetches the list of knowledge bases
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -45,7 +45,7 @@ export default function KnowledgeBaseList() {
         {/* Navigation to home */}
         <nav className="mb-6">
           <Link to="/" className="inline-flex items-center text-blue-600 hover:underline">
-            &#8592; Home
+            <HomeIcon className="h-4 w-4 mr-1"/>  Home
           </Link>
         </nav>
   
