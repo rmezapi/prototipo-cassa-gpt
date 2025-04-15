@@ -1,4 +1,4 @@
-# netlify.toml (in monorepo root)
+# netlify.toml
 
 [build]
   base    = "frontend/"       # Build context
