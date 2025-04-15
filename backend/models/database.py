@@ -1,21 +1,40 @@
 # backend/models/database.py
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base # Use declarative_base
+from sqlalchemy.orm import sessionmaker
+# *** Import declarative_base to DEFINE Base ***
+from sqlalchemy.ext.declarative import declarative_base
 
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+pysqlite:///./sql_app.db")
+load_dotenv()
 
-# Use check_same_thread=False only for SQLite
-connect_args = {"check_same_thread": False} if SQLALCHEMY_DATABASE_URL.startswith("sqlite") else {}
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args=connect_args
-)
+if not SQLALCHEMY_DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable not set or .env file not found")
+
+print(f"Attempting to connect to DB: {SQLALCHEMY_DATABASE_URL[:30]}...")
+
+# *** DEFINE Base here ***
+Base = declarative_base()
+
+# Modify engine creation
+if SQLALCHEMY_DATABASE_URL.startswith("postgresql"):
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    print("Using PostgreSQL engine.")
+# Remove or comment out SQLite part if not needed as fallback
+# elif SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+#     engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+#     print("Using SQLite engine.")
+else:
+     raise ValueError(f"Unsupported database URL prefix: {SQLALCHEMY_DATABASE_URL[:15]}...")
+
+# SessionLocal and get_db remain the same
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base() # Create the Base class
+# *** REMOVE the incorrect import from chat_models ***
+# from models.chat_models import Base # <--- DELETE THIS LINE
 
-# Dependency to get DB session in routes
 def get_db():
     db = SessionLocal()
     try:

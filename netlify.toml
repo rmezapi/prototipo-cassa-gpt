@@ -1,0 +1,14 @@
+# netlify.toml (in monorepo root)
+
+[build]
+  base    = "frontend/"       # Context is the frontend folder
+  command = "npm run build"   # Your build command
+  # publish directory usually auto-detected with Vite preset
+
+# You might not need functions dir setting if preset handles it
+# [functions]
+#  directory = ".netlify/functions/" # Relative to base
+
+[build.environment]
+   # Set non-secret build vars if needed
+   # NODE_VERSION = "18"
