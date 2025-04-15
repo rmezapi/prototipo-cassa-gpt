@@ -18,7 +18,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   try {
     // Assuming listConversations takes skip and limit parameters
     // Adjust the call based on your actual API client function signature
-    const conversations = await listConversations({ skip, limit });
+    const conversations = await listConversations(skip, limit);
 
     // Return the data (or an empty array if null/undefined)
     return json({ conversations: conversations ?? [] });

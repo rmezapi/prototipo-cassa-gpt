@@ -133,7 +133,7 @@ export async function action({ request, params }: ActionFunctionArgs): Promise<R
 
 
 // --- Component ---
-const CONVERSATION_LOAD_LIMIT = 5;
+export const CONVERSATION_LOAD_LIMIT = 5;
 
 export default function ChatConversation() {
     const loaderData = useLoaderData<typeof loader>(); // Use loader data which includes KB info
