@@ -8,7 +8,7 @@
   # *** POINT TO THE ADAPTER'S EXPECTED OUTPUT DIRECTORY ***
   # The Remix Netlify adapter usually creates a .netlify folder
   # within the 'base' directory.
-  publish = "build" 
+  publish = "build/client/" 
 
 # OMIT [functions] block - Let the adapter and Netlify figure it out
 # from the structure within the publish directory.
