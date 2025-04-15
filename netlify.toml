@@ -1,0 +1,16 @@
+# netlify.toml (Place in monorepo root)
+
+[build]
+  # Base directory for the build context
+  base    = "frontend/"
+  # Command to run inside the base directory
+  command = "npm run build"
+  # Directory (relative to the repo root) containing deploy-ready assets + functions
+  # The Remix+Vite build with `@remix-run/netlify` adapter
+  # should create this structure inside the 'base' directory.
+  publish = "frontend/build/server/" # points to server build output
+  #publish = "frontend/.netlify/" # Try this if the above doesnt work
+
+# Specify the functions directory explicitly
+[functions]
+  directory = "frontend/.netlify/functions-internal/" # Default directory for Netlify adapter functions
