@@ -1,9 +1,9 @@
 # netlify.toml (in monorepo root)
 
 [build]
-  base    = "frontend/"       # Context is the frontend folder
-  command = "npm run build"   # Your build command
-  # publish directory usually auto-detected with Vite preset
+  base    = "frontend/"       # Build context
+  command = "npm i && npm run build"   # Build command within frontend/
+  publish = "frontend/.netlify/" # Explicit publish dir (path from repo root)
 
 # You might not need functions dir setting if preset handles it
 # [functions]
