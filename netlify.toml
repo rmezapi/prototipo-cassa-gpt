@@ -4,13 +4,13 @@
   # Base directory for the build context
   base    = "frontend/"
   # Command to run inside the base directory
-  command = "npm run build"
+  command = "pwd && ls && npm i && npm run build"
   # Directory (relative to the repo root) containing deploy-ready assets + functions
   # The Remix+Vite build with `@remix-run/netlify` adapter
   # should create this structure inside the 'base' directory.
-  publish = "build/server/" # points to server build output
+  publish = "build/" # points to server build output
   #publish = ".netlify/" # Try this if the above doesnt work
 
 # Specify the functions directory explicitly
 [functions]
-  directory = ".netlify/functions-internal/" # Default directory for Netlify adapter functions
+  directory = "build/server/" # Default directory for Netlify adapter functions
