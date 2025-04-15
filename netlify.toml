@@ -13,4 +13,4 @@
 
 # Specify the functions directory explicitly
 [functions]
-  directory = "frontend/.netlify/functions-internal/" # Default directory for Netlify adapter functions
+  directory = ".netlify/functions-internal/" # Default directory for Netlify adapter functions
