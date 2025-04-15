@@ -94,7 +94,7 @@ origins = [
     "http://localhost:5173", # Default Vite dev port (sometimes used)
     "http://localhost:8000", # Allow Swagger UI/API itself if needed
     # --- Add your deployed frontend origin (Netlify URL) when ready ---
-    # "https://your-netlify-app-name.netlify.app",
+    "https://cassagpt-demo.netlify.app/",
 ]
 # If your backend might be deployed too, add its origin if different
 # origins.append("https://your-backend-url.onrender.com")
