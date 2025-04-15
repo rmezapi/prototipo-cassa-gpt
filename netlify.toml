@@ -3,7 +3,7 @@
 [build]
   base    = "frontend/"       # Build context
   command = "npm i && npm run build"   # Build command within frontend/
-  publish = "frontend/.netlify/" # Explicit publish dir (path from repo root)
+  publish = "/.netlify/" # Explicit publish dir (path from repo root)
 
 # You might not need functions dir setting if preset handles it
 # [functions]
