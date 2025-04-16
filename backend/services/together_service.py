@@ -40,12 +40,17 @@ class TogetherService:
 
     # --- generate_text - WRAPPED for ASYNC CONTEXT ---
     # Method remains async def because it's called from async routes
-    @retry(...)
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(3))
     async def generate_text(self, prompt: str, model: str = GENERATION_MODEL, **kwargs) -> str:
+        # Enhanced logging for model selection
+        logger.info(f"TogetherService.generate_text called with model: {model}")
+        logger.info(f"Default model would be: {GENERATION_MODEL}")
+        logger.info(f"Using model: {model if model else GENERATION_MODEL}")
+
         # Define a synchronous helper function to make the actual API call
         def _sync_generate():
             try:
-                logger.info(f"(Sync Call) Requesting text generation model {model}...")
+                logger.info(f"(Sync Call) Requesting text generation with model: {model}")
                 # --- Make the SYNCHRONOUS call ---
                 response = self.client.chat.completions.create(
                     model=model,

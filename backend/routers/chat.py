@@ -68,10 +68,21 @@ async def create_conversation(
     """
     Creates a new conversation record, optionally linking it to a Knowledge Base.
     """
+    logger.info(f"Received create_conversation request with payload: {payload}")
     conversation_id = str(uuid.uuid4())
     kb_id_to_store = payload.knowledge_base_id if payload and payload.knowledge_base_id else None
 
-    logger.info(f"Attempting to create conversation, linking KB ID: {kb_id_to_store}")
+    # Always use the provided model_id, or default to Llama-3.3 if not provided
+    if payload and hasattr(payload, 'model_id'):
+        model_id_to_store = payload.model_id
+        logger.info(f"Using model_id from payload: {model_id_to_store}")
+    else:
+        model_id_to_store = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+        logger.info(f"No model_id in payload, using default: {model_id_to_store}")
+
+    logger.info(f"Payload model_id: {payload.model_id if payload and hasattr(payload, 'model_id') else 'None'}, Type: {type(payload.model_id) if payload and hasattr(payload, 'model_id') else 'None'}")
+
+    logger.info(f"Attempting to create conversation, linking KB ID: {kb_id_to_store}, model ID: {model_id_to_store}")
 
     if kb_id_to_store:
         def _sync_check_kb():
@@ -87,7 +98,8 @@ async def create_conversation(
 
     db_conversation = db_models.Conversation(
         id=conversation_id,
-        knowledge_base_id=kb_id_to_store
+        knowledge_base_id=kb_id_to_store,
+        model_id=model_id_to_store
     )
 
     def _sync_create():
@@ -103,7 +115,7 @@ async def create_conversation(
              raise Exception(f"Database error during conversation creation: {str(e)}") from e
     try:
         created_conv = await run_in_threadpool(_sync_create)
-        logger.info(f"Created new conversation with ID: {created_conv.id}, linked KB: {created_conv.knowledge_base_id}")
+        logger.info(f"Created new conversation with ID: {created_conv.id}, linked KB: {created_conv.knowledge_base_id}, model: {created_conv.model_id}")
         return created_conv # Pydantic uses the response_model
     except Exception as e:
          # Ensure detail is a string
@@ -394,10 +406,17 @@ User Query: {user_query}
 Assistant Response:"""
 
 
-        # 7. Call LLM
-        # ... (LLM call remains the same) ...
-        logger.info("Generating AI response...")
-        ai_response_text = await together_svc.generate_text(prompt=prompt)
+        # 7. Call LLM with the model_id from the conversation
+        # Get the model_id from the conversation
+        def _sync_get_model_id():
+            model = db.query(db_models.Conversation.model_id).filter(db_models.Conversation.id == conversation_id).scalar()
+            logger.info(f"Retrieved model_id from DB for conversation {conversation_id}: {model}")
+            return model or "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+
+        model_id = await run_in_threadpool(_sync_get_model_id)
+        logger.info(f"Generating AI response using model: {model_id}...")
+        logger.info(f"Type of model_id: {type(model_id)}")
+        ai_response_text = await together_svc.generate_text(prompt=prompt, model=model_id)
 
 
         # 8. Prepare AI Response (DB + Qdrant History)

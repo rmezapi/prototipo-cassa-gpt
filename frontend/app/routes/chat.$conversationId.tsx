@@ -3,7 +3,7 @@
 // --- Core Remix Imports ---
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { Form, useLoaderData, useFetcher, useParams, Link, useNavigate } from "@remix-run/react"; // Removed useSubmit
-import { json, redirect } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
 
 // --- React Imports ---
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -27,13 +27,14 @@ import {
 // --- Icons (Optional) ---
 import {
     PaperAirplaneIcon,
-    ArrowUpTrayIcon,
+    PaperClipIcon, // Changed from ArrowUpTrayIcon
     DocumentTextIcon,
     PlusIcon,
     ChevronDownIcon,
     ArrowPathIcon,
     HomeIcon, // Added
-    CircleStackIcon // Added
+    CircleStackIcon, // Added
+    CpuChipIcon // Added for model display
 } from '@heroicons/react/24/outline';
 
 // --- Frontend Specific Types ---
@@ -92,7 +93,7 @@ export async function loader({ params }: LoaderFunctionArgs) {
             uploadedFiles: uploadedSessionFiles,
         };
         console.log(`Loader [${conversationId}]: Returning ${initialMessages.length} messages. Linked KB: ${data.knowledge_base?.name ?? 'None'}.`);
-        return json(data);
+        return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
     } catch (error: any) {
         console.error(`Loader Error for ${conversationId}:`, error);
         if (error instanceof Response && error.status === 404) { throw new Response("Conversation Not Found", { status: 404 }); }
@@ -105,29 +106,29 @@ export async function loader({ params }: LoaderFunctionArgs) {
 // (Action remains the same - uses uploadFileToSession correctly now)
 export async function action({ request, params }: ActionFunctionArgs): Promise<Response> {
     const conversationId = params.conversationId;
-    if (!conversationId) { return json<ChatActionData>({ ok: false, error: "Missing conversation ID" }, { status: 400 }); }
+    if (!conversationId) { return new Response(JSON.stringify({ ok: false, error: "Missing conversation ID" }), { status: 400, headers: { 'Content-Type': 'application/json' } }); }
     const formData = await request.formData();
     const intent = formData.get("intent");
     console.log(`Action [${conversationId}]: Received intent = ${intent}`);
     try {
         if (intent === "chat") {
             const query = formData.get("query");
-            if (typeof query !== 'string' || !query.trim()) { return json<ChatActionData>({ ok: false, error: "Query cannot be empty" }, { status: 400 }); }
+            if (typeof query !== 'string' || !query.trim()) { return new Response(JSON.stringify({ ok: false, error: "Query cannot be empty" }), { status: 400, headers: { 'Content-Type': 'application/json' } }); }
             const response = await sendChatMessage({ query: query.trim(), conversation_id: conversationId });
-            return json<ChatActionData>({ ok: true, type: 'chat', aiResponse: response });
+            return new Response(JSON.stringify({ ok: true, type: 'chat', aiResponse: response }), { headers: { 'Content-Type': 'application/json' } });
         } else if (intent === "upload") {
             const file = formData.get("file");
-            if (!(file instanceof File) || file.size === 0) { return json<ChatActionData>({ ok: false, error: "Invalid or empty file uploaded" }, { status: 400 }); }
+            if (!(file instanceof File) || file.size === 0) { return new Response(JSON.stringify({ ok: false, error: "Invalid or empty file uploaded" }), { status: 400, headers: { 'Content-Type': 'application/json' } }); }
             const response = await uploadFileToSession(conversationId, file);
-            return json<ChatActionData>({ ok: true, type: 'upload', uploadInfo: response });
+            return new Response(JSON.stringify({ ok: true, type: 'upload', uploadInfo: response }), { headers: { 'Content-Type': 'application/json' } });
         } else {
-            return json<ChatActionData>({ ok: false, error: "Invalid intent specified" }, { status: 400 });
+            return new Response(JSON.stringify({ ok: false, error: "Invalid intent specified" }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
     } catch (error: any) {
          console.error(`Action Error [${conversationId}] (intent: ${intent}):`, error);
          const errorMessage = (error instanceof Response ? (await error.text()) : error?.message) || "An unexpected API error occurred";
          const status = error?.status || (error instanceof Response ? error.status : 500);
-         return json<ChatActionData>({ ok: false, error: errorMessage }, { status: status });
+         return new Response(JSON.stringify({ ok: false, error: errorMessage }), { status: status, headers: { 'Content-Type': 'application/json' } });
     }
 }
 
@@ -159,6 +160,7 @@ export default function ChatConversation() {
     const [uiError, setUiError] = useState<string | null>(null);
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [selectedKbForNewChat, setSelectedKbForNewChat] = useState<string>("");
+    const [selectedModel, setSelectedModel] = useState<string>("meta-llama/Llama-3.3-70B-Instruct-Turbo-Free");
 
 
     const conversationId = params.conversationId;
@@ -202,7 +204,9 @@ export default function ChatConversation() {
         setUiError(null);
         try {
           // Pass selectedKbForNewChat if set, else null
-          const newConv = await createConversation(selectedKbForNewChat || null);
+          // Use the selected model from state
+          console.log(`handleNewChat: Creating new conversation with model: ${selectedModel}`);
+          const newConv = await createConversation(selectedKbForNewChat || null, selectedModel);
           if (newConv?.id) {
             await loadConversations(false);
             navigate(`/chat/${newConv.id}`);
@@ -215,7 +219,7 @@ export default function ChatConversation() {
           setIsCreatingChat(false);
           selectedKbForNewChat && setSelectedKbForNewChat(""); // Reset selected KB for new chat
         }
-      }, [navigate, isCreatingChat, loadConversations, selectedKbForNewChat]);
+      }, [navigate, isCreatingChat, loadConversations, selectedKbForNewChat, selectedModel]);
 
     const handleUploadButtonClick = useCallback(() => { if(fileInputRef.current) fileInputRef.current.click(); }, []);
     const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => { /* ... same session upload logic ... */
@@ -240,6 +244,23 @@ export default function ChatConversation() {
     // Initial conversation list load
     useEffect(() => { if (conversationList.length === 0 && !isLoadingList) loadConversations(false); }, [conversationList.length, isLoadingList, loadConversations]);
 
+    // Load selected model from localStorage on client-side only
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const storedModel = localStorage.getItem('selectedModel');
+            if (storedModel) {
+                setSelectedModel(storedModel);
+            }
+        }
+    }, []);
+
+    // Save selected model to localStorage when it changes
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('selectedModel', selectedModel);
+        }
+    }, [selectedModel]);
+
     // Handle ChatFetcher response (optimistic UI)
     useEffect(() => {
       if (chatFetcher.state === "idle") {
@@ -254,7 +275,7 @@ export default function ChatConversation() {
             // Optionally remove any leftover loading messages (if desired)
             .filter((m) => !(m.isLoading && m.speaker === "user"))
         );
-    
+
         const data = chatFetcher.data;
         if (data) {
           if (data.ok && data.type === "chat") {
@@ -360,13 +381,39 @@ export default function ChatConversation() {
                         ))}
                     </select>
                 </div>
+                <div className="mb-4">
+                    <label htmlFor="model-select" className="block text-xs font-medium text-gray-600 mb-1">
+                        Select Model
+                    </label>
+                    <select
+                        id="model-select"
+                        className="w-full p-2 border bg-gray-100 border-gray-100 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        value={selectedModel}
+                    >
+                        <option value="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free">Llama-3.3-70B-Instruct-Turbo</option>
+                        <option value="meta-llama/Llama-Vision-Free">Llama-Vision</option>
+                        <option value="deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free">DeepSeek-R1-Distill-Llama-70B</option>
+                    </select>
+                </div>
                 <button type="button" onClick={handleNewChat} disabled={isCreatingChat} className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 mb-4 transition-colors duration-150 disabled:opacity-60">
                     {isCreatingChat ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <PlusIcon className="h-5 w-5" />} New Chat
                 </button>
                 <hr className="my-2 border-gray-200"/>
                 {/* Uploaded Session Files List */}
                 <div className="mb-4">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">Session Files</h3>
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-1">Session Files</h3>
+                        <button
+                            type="button"
+                            onClick={handleUploadButtonClick}
+                            disabled={isUploading || !conversationId}
+                            title={isUploading ? "Uploading..." : "Upload Session File"}
+                            className="flex-shrink-0 p-1 rounded-md text-gray-500 hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 transition-colors duration-150"
+                        >
+                            {isUploading ? ( <ArrowPathIcon className="h-4 w-4 animate-spin text-blue-500" /> ) : ( <PaperClipIcon className="h-4 w-4" /> )}
+                        </button>
+                    </div>
                     <div className="bg-gray-100 rounded-md p-2 border border-gray-100 shadow-sm">
                         {uploadedFiles.length === 0 ? (<p className="text-sm text-gray-400 italic px-1">(No files uploaded)</p> ) : ( <ul className="space-y-1 max-h-40 overflow-y-auto"> {uploadedFiles.map((file) => ( <li key={file.doc_id} title={file.filename} className="flex items-center gap-2 text-sm text-gray-700 truncate px-1 py-0.5"> <DocumentTextIcon className="h-4 w-4 text-gray-400 flex-shrink-0" /> <span className="truncate">{file.filename}</span> </li> ))} </ul> )}
                     </div>
@@ -432,23 +479,33 @@ export default function ChatConversation() {
                              {/* Display Chat ID */}
                             <p className="text-xs text-gray-500 mt-0.5 p-2"> <strong>Conversation ID: </strong>{conversationId}</p>
                              {/* Display Linked KB from loaderData */}
-                             {loaderData.knowledge_base ? (
-                                <div className="bg-blue-100 rounded hover:bg-blue-200 transition-colors duration-150 p-1 flex items-center gap-1">
-                                    <p className="text-xs text-gray-500 m-0.5 flex items-center justify-center gap-1" title={`Using Knowledge Base: ${loaderData.knowledge_base.name}`}>
-                                        <CircleStackIcon className="h-3 w-3 text-gray-400 flex-shrink-0"/>
-                                        <Link to={`/kbs/${loaderData.knowledge_base.id}`} className="text-blue-600 hover:underline font-medium truncate">
-                                            {loaderData.knowledge_base.name}
-                                        </Link>
+                             <div className="flex flex-wrap gap-2 justify-center">
+                                {loaderData.knowledge_base ? (
+                                   <div className="bg-blue-100 rounded hover:bg-blue-200 transition-colors duration-150 p-1 flex items-center gap-1">
+                                       <p className="text-xs text-gray-500 m-0.5 flex items-center justify-center gap-1" title={`Using Knowledge Base: ${loaderData.knowledge_base.name}`}>
+                                           <CircleStackIcon className="h-3 w-3 text-gray-400 flex-shrink-0"/>
+                                           <Link to={`/kbs/${loaderData.knowledge_base.id}`} className="text-blue-600 hover:underline font-medium truncate">
+                                               {loaderData.knowledge_base.name}
+                                           </Link>
+                                       </p>
+                                   </div>
+                                ) : (
+                                     <p className="text-xs text-gray-400 italic mt-0.5">No KB linked</p>
+                                )}
+                                {/* Display Model */}
+                                <div className="bg-purple-100 rounded hover:bg-purple-200 transition-colors duration-150 p-1 flex items-center gap-1">
+                                    <p className="text-xs text-gray-500 m-0.5 flex items-center justify-center gap-1" title={`Using Model: ${loaderData.model_id || "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"}`}>
+                                        <CpuChipIcon className="h-3 w-3 text-gray-400 flex-shrink-0"/>
+                                        <span className="text-purple-600 font-medium truncate">
+                                            {loaderData.model_id ? loaderData.model_id.split('/').pop() : "Llama-3.3-70B-Instruct-Turbo"}
+                                        </span>
                                     </p>
                                 </div>
-                                 
-                             ) : (
-                                  <p className="text-xs text-gray-400 italic mt-0.5">No KB linked</p>
-                             )}
+                             </div>
                         </div>
 
-                        {/* Placeholder for right-side actions - adjust width as needed */}
-                        <div className="w-16 flex-shrink-0 ml-2"> </div> {/* Adjusted width/margin */}
+                        {/* Empty space for balance */}
+                        <div className="w-16 flex-shrink-0 ml-2"></div>
                     </div>
                 </header>
                 {/* END HEADER */}
@@ -485,7 +542,7 @@ export default function ChatConversation() {
                      <div className="flex items-end gap-2">
                         {/* Session File Upload Button */}
                         <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp" disabled={isUploading || !conversationId} />
-                        <button type="button" onClick={handleUploadButtonClick} disabled={isUploading || !conversationId} title={isUploading ? "Uploading..." : "Upload Session File"} className="flex-shrink-0 p-2 rounded-md text-gray-500 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 disabled:opacity-50 transition-colors duration-150"> {isUploading ? ( <ArrowPathIcon className="h-5 w-5 animate-spin text-blue-500" /> ) : ( <ArrowUpTrayIcon className="h-5 w-5" /> )} </button>
+                        <button type="button" onClick={handleUploadButtonClick} disabled={isUploading || !conversationId} title={isUploading ? "Uploading..." : "Upload Session File"} className="flex-shrink-0 p-2 rounded-md text-gray-500 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 disabled:opacity-50 transition-colors duration-150"> {isUploading ? ( <ArrowPathIcon className="h-5 w-5 animate-spin text-blue-500" /> ) : ( <PaperClipIcon className="h-5 w-5" /> )} </button>
 
                         {/* Chat Input Form */}
                         <Form method="post" action={`/chat/${conversationId}`} onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex-grow flex gap-2 items-end">

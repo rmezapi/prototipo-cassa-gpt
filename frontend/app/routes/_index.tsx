@@ -1,13 +1,12 @@
 // frontend/app/routes/_index.tsx
 
-import { redirect, json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useNavigation, Link, useFetcher, useNavigate } from "@remix-run/react"; // Added useNavigate
+import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useLoaderData, useNavigation, Link, useFetcher } from "@remix-run/react";
 import {
     createConversation,
     listConversations,
     listKnowledgeBases,
     type ConversationInfo, // This type should ideally only have knowledge_base_id
-    type KnowledgeBaseInfo,
     createKnowledgeBase
 } from "~/lib/apiClient";
 import {
@@ -20,7 +19,7 @@ import {
 import { useState, useEffect, useMemo } from "react"; // Added useMemo
 
 // --- Loader ---
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({}: LoaderFunctionArgs) {
     try {
         console.log("Index Loader: Fetching conversations (with KB ID) and KBs...");
         // listConversations now returns ConversationInfo[] which includes nested KB object
@@ -30,11 +29,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
         ]);
         console.log(`Index Loader: Found ${conversations?.length ?? 0} convos, ${knowledgeBases?.length ?? 0} KBs.`);
         // Ensure arrays are returned even if API gives null/undefined
-        return json({
+        return new Response(JSON.stringify({
             conversations: Array.isArray(conversations) ? conversations : [],
             knowledgeBases: Array.isArray(knowledgeBases) ? knowledgeBases : [],
             error: null
-        });
+        }), { headers: { 'Content-Type': 'application/json' } });
     } catch (error: any) {
         console.error("Index Loader Error:", error);
         // Determine error message safely
@@ -51,7 +50,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             detail = error.message;
         }
         // Ensure arrays are returned in error case too
-        return json({ conversations: [], knowledgeBases: [], error: detail }, { status: error?.status || 500 });
+        return new Response(JSON.stringify({ conversations: [], knowledgeBases: [], error: detail }), { status: error?.status || 500, headers: { 'Content-Type': 'application/json' } });
     }
 }
 
@@ -65,8 +64,10 @@ export async function action({ request }: ActionFunctionArgs) {
     if (intent === "newChat") {
         try {
           const selectedKbId = kbId && kbId !== "none" ? kbId : null;
-          console.log(`Index Action: Creating new conversation (KB ID: ${selectedKbId})...`);
-          const newConv = await createConversation(selectedKbId); // API returns ConversationInfo
+          const modelId = formData.get("modelId") as string;
+          console.log(`Index Action: Creating new conversation (KB ID: ${selectedKbId}, Model ID: ${modelId})...`);
+          console.log(`Index Action: modelId type: ${typeof modelId}, value: ${modelId}`);
+          const newConv = await createConversation(selectedKbId, modelId); // API returns ConversationInfo
 
           if (newConv?.id) { // Check if newConv and newConv.id exist
             console.log("Index Action: Redirecting to:", `/chat/${newConv.id}`);
@@ -83,18 +84,18 @@ export async function action({ request }: ActionFunctionArgs) {
                    detail = error.statusText || `API Error (${error.status})`;
               }
            } else if (error?.message) { detail = error.message; }
-          return json({ error: detail }, { status: error?.status || 500 });
+          return new Response(JSON.stringify({ error: detail }), { status: error?.status || 500, headers: { 'Content-Type': 'application/json' } });
         }
     } else if (intent === "newKB") {
         const name = formData.get("kbName") as string;
         const description = formData.get("kbDescription") as string;
         if (!name || typeof name !== 'string' || !name.trim()) {
-             return json({ error: "KB Name is required and cannot be empty"}, { status: 400 });
+             return new Response(JSON.stringify({ error: "KB Name is required and cannot be empty" }), { status: 400, headers: { 'Content-Type': 'application/json' } });
         }
          try {
-            await createKnowledgeBase({ name: name.trim(), description: description?.trim() || null });
-            // Return simple success, rely on useEffect with navigate to revalidate
-            return json({ ok: true, message: "KB Created!" });
+            const newKb = await createKnowledgeBase({ name: name.trim(), description: description?.trim() || null });
+            // Redirect directly to the new KB page
+            return redirect(`/kbs/${newKb.id}`);
          } catch(error: any) {
             let detail = "Failed to create KB";
              if (error instanceof Response) {
@@ -105,11 +106,11 @@ export async function action({ request }: ActionFunctionArgs) {
                     detail = error.statusText || `API Error (${error.status})`;
                  }
              } else if (error?.message) { detail = error.message; }
-            return json({ error: detail }, { status: error?.status || 500 });
+            return new Response(JSON.stringify({ error: detail }), { status: error?.status || 500, headers: { 'Content-Type': 'application/json' } });
          }
     }
     // Default return if intent doesn't match
-    return json({ error: "Invalid intent provided" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "Invalid intent provided" }), { status: 400, headers: { 'Content-Type': 'application/json' } });
 }
 
 
@@ -124,12 +125,13 @@ export default function Index() {
 
   const navigation = useNavigation();
   const kbCreateFetcher = useFetcher<typeof action>();
-  const navigate = useNavigate();
+  // const navigate = useNavigate(); // Not needed since we're using redirect
 
   const [selectedKbId, setSelectedKbId] = useState<string>("none");
   const [showKbForm, setShowKbForm] = useState(false);
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
+  const [selectedModel, setSelectedModel] = useState<string>("meta-llama/Llama-3.3-70B-Instruct-Turbo-Free");
 
   // Safely initialize state based on potentially empty initialConversations
   const [conversationList, setConversationList] = useState<ConversationInfo[]>(() =>
@@ -189,17 +191,13 @@ export default function Index() {
      );
   };
 
-  // Effect to clear form and revalidate after successful KB creation
+  // Effect to handle KB creation errors
   useEffect(() => {
-     if (kbCreateFetcher.state === 'idle' && kbCreateFetcher.data?.ok) {
-          setNewKbName(""); setNewKbDescription(""); setShowKbForm(false);
-          console.log("KB Creation successful, revalidating index loader...");
-          navigate('.', { replace: true, state: { scroll: false } }); // Re-runs loader
-     } else if (kbCreateFetcher.state === 'idle' && kbCreateFetcher.data?.error) {
+     if (kbCreateFetcher.state === 'idle' && kbCreateFetcher.data?.error) {
           // Optionally set a UI error state here to display to the user
           console.error("KB Creation Error:", kbCreateFetcher.data.error);
      }
-  }, [kbCreateFetcher.state, kbCreateFetcher.data, navigate]);
+  }, [kbCreateFetcher.state, kbCreateFetcher.data]);
 
    // Effect to update conversation list if initial data changes (e.g., after revalidation)
    useEffect(() => {
@@ -213,6 +211,23 @@ export default function Index() {
             Array.isArray(initialConversations) && initialConversations.length === 10
        );
    }, [initialConversations]); // Depend only on the initial data from loader
+
+   // Load selected model from localStorage on client-side only
+   useEffect(() => {
+       if (typeof window !== 'undefined') {
+           const storedModel = localStorage.getItem('selectedModel');
+           if (storedModel) {
+               setSelectedModel(storedModel);
+           }
+       }
+   }, []);
+
+   // Save selected model to localStorage when it changes
+   useEffect(() => {
+       if (typeof window !== 'undefined') {
+           localStorage.setItem('selectedModel', selectedModel);
+       }
+   }, [selectedModel]);
 
 
   return (
@@ -308,6 +323,20 @@ export default function Index() {
                   {Array.isArray(knowledgeBases) && knowledgeBases.map(kb => (
                     kb?.id && kb.name ? <option key={kb.id} value={kb.id}>{kb.name}</option> : null
                   ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="model-select" className="block text-sm font-medium text-gray-700 mb-1 text-left"> Select Model </label>
+                <select
+                  id="model-select"
+                  name="modelId"
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm"
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                >
+                  <option value="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free">Llama-3.3-70B-Instruct-Turbo</option>
+                  <option value="meta-llama/Llama-Vision-Free">Llama-Vision</option>
+                  <option value="deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free">DeepSeek-R1-Distill-Llama-70B</option>
                 </select>
               </div>
               <button type="submit" className="w-full px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition" disabled={isCreatingChat}>

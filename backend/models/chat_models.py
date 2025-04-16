@@ -16,6 +16,7 @@ class Conversation(Base):
     id = Column(String, primary_key=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     knowledge_base_id = Column(String, ForeignKey("knowledge_bases.id"), nullable=True, index=True)
+    model_id = Column(String, nullable=True, index=True, default="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free")
 
     # Relationships
     knowledge_base = relationship("KnowledgeBase", back_populates="conversations")
@@ -117,6 +118,7 @@ class ConversationDetailSchema(BaseModel):
     messages: List[MessageInfoSchema] = []
     knowledge_base_id: Optional[str] = None # ID of the linked KB
     knowledge_base: Optional[KnowledgeBaseInfoSchema] = Field(None, description="Details of the linked Knowledge Base, if any") # Nested KB details
+    model_id: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
     # Optionally include session uploads if needed in this view
     # uploaded_documents: List[UploadedFileInfoSchema] = []
 
@@ -128,6 +130,7 @@ class ConversationInfoSchema(BaseModel):
     id: str
     created_at: datetime.datetime
     knowledge_base_id: Optional[str] = None
+    model_id: Optional[str] = "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
     # Optionally add knowledge_base name here too if needed for list view
     # knowledge_base_name: Optional[str] = None
 
@@ -137,6 +140,7 @@ class ConversationInfoSchema(BaseModel):
 # Schema for creating a conversation
 class ConversationCreatePayloadSchema(BaseModel):
     knowledge_base_id: Optional[str] = Field(None, description="Optional ID of the Knowledge Base to link to this conversation.")
+    model_id: str = Field("meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", description="Model ID to use for this conversation.")
 
 # Schema for chat request payload
 class ChatRequestSchema(BaseModel):

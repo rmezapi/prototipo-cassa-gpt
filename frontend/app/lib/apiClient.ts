@@ -41,14 +41,24 @@ export async function fetchApi<T = any>( // Generic type T for response data
   }
 
   try {
+    console.log(`fetchApi: Sending request to ${url}`);
+    console.log(`fetchApi: Request method: ${config.method}`);
+    console.log(`fetchApi: Request headers:`, config.headers);
+    if (config.body) {
+      console.log(`fetchApi: Request body:`, config.body);
+    }
+
     const response = await fetch(url, config);
+    console.log(`fetchApi: Response status: ${response.status}`);
 
     if (!response.ok) {
       let errorData;
       try {
         errorData = await response.json();
+        console.log(`fetchApi: Error response data:`, errorData);
       } catch (e) {
         errorData = { detail: response.statusText };
+        console.log(`fetchApi: Error parsing response:`, e);
       }
       throw new Response(
           typeof errorData?.detail === 'string'
@@ -59,10 +69,12 @@ export async function fetchApi<T = any>( // Generic type T for response data
     }
 
     if (response.status === 204) {
+       console.log(`fetchApi: Response status 204, returning empty object`);
        return {} as T;
     }
 
     const data: T = await response.json();
+    console.log(`fetchApi: Response data:`, data);
     return data;
 
   } catch (error) {
@@ -155,6 +167,7 @@ export interface ConversationInfo {
     id: string;
     created_at: string;
     knowledge_base_id: string | null;
+    model_id: string | null;
 }
 interface MessageInfo {
     id: string;
@@ -176,9 +189,20 @@ interface UploadedFileInfo {
     doc_id: string;
     uploaded_at: string;
 }
-export const createConversation = (kbId?: string | null): Promise<ConversationInfo> => { // Backend returns ConversationInfoSchema
-    const payload = kbId ? { knowledge_base_id: kbId } : {};
+export const createConversation = (kbId?: string | null, modelId?: string | null): Promise<ConversationInfo> => { // Backend returns ConversationInfoSchema
+    console.log("createConversation called with modelId:", modelId);
+    console.log("modelId type:", typeof modelId);
+
+    // Always include model_id in the payload
+    const payload: { knowledge_base_id?: string, model_id: string } = {
+        model_id: modelId || "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"
+    };
+
+    if (kbId) payload.knowledge_base_id = kbId;
+
     console.log("Creating conversation with payload:", payload);
+    console.log("Payload JSON:", JSON.stringify(payload));
+
     return fetchApi<ConversationInfo>("/chat/conversations", { // Expecting ConversationInfo response
         method: "POST",
         body: JSON.stringify(payload),
