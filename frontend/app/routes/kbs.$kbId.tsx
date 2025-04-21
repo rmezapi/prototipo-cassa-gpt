@@ -1,6 +1,7 @@
 // frontend/app/routes/kbs.$kbId.tsx
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import SafeThemeToggle from "~/components/SafeThemeToggle";
 import {
   json,
   type LoaderFunctionArgs,
@@ -213,65 +214,68 @@ export default function KnowledgeBaseDetailView() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 max-w-4xl mx-auto min-h-screen bg-white dark:bg-dark-bg text-gray-900 dark:text-dark-text">
         {/* Back Link and Title */}
-        <div className="mb-6 pb-4 border-b border-gray-200">
-            <nav className="mb-6">
-            <Link to="/" className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800 mb-2">
-                <HomeIcon className="h-4 w-4 mr-1"/>  Home
-            </Link>
-            </nav>
-            <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-800 mb-2"> <ChevronLeftIcon className="h-4 w-4 mr-1" /> More Knowledge Bases </Link>
-            <h1 className="text-xl md:text-2xl font-semibold text-gray-800 flex items-center"> <CircleStackIcon className="h-6 w-6 mr-2 text-blue-600 flex-shrink-0" /> <span className="truncate">{kbDetails.name}</span> </h1>
-            {kbDetails.description && ( <p className="mt-1 text-sm text-gray-500">{kbDetails.description}</p> )}
-            <p className="mt-1 text-xs text-gray-400">ID: {kbDetails.id}</p>
+        <div className="mb-6 pb-4 border-b border-gray-200 dark:border-dark-border">
+            <div className="flex justify-between items-center mb-2">
+                <nav>
+                <Link to="/" className="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-2">
+                    <HomeIcon className="h-4 w-4 mr-1"/>  Home
+                </Link>
+                </nav>
+                <SafeThemeToggle />
+            </div>
+            <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-2"> <ChevronLeftIcon className="h-4 w-4 mr-1" /> More Knowledge Bases </Link>
+            <h1 className="text-xl md:text-2xl font-semibold text-gray-800 dark:text-dark-text flex items-center"> <CircleStackIcon className="h-6 w-6 mr-2 text-blue-600 dark:text-blue-400 flex-shrink-0" /> <span className="truncate">{kbDetails.name}</span> </h1>
+            {kbDetails.description && ( <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{kbDetails.description}</p> )}
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">ID: {kbDetails.id}</p>
         </div>
 
         {/* Guidance Message */}
         {needsFirstDocument && (
-            <div className="mb-6 p-4 border-l-4 border-blue-400 bg-blue-50 rounded-r-lg shadow-sm">
-                <div className="flex"> <div className="flex-shrink-0"> <InformationCircleIcon className="h-5 w-5 text-blue-400" aria-hidden="true" /> </div> <div className="ml-3"> <p className="text-sm text-blue-700"> This Knowledge Base is empty. Upload your first document below to enable context retrieval for linked chats. </p> </div> </div>
+            <div className="mb-6 p-4 border-l-4 border-blue-400 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/30 rounded-r-lg shadow-sm">
+                <div className="flex"> <div className="flex-shrink-0"> <InformationCircleIcon className="h-5 w-5 text-blue-400 dark:text-blue-300" aria-hidden="true" /> </div> <div className="ml-3"> <p className="text-sm text-blue-700 dark:text-blue-300"> This Knowledge Base is empty. Upload your first document below to enable context retrieval for linked chats. </p> </div> </div>
             </div>
         )}
 
         {/* Document Upload Section */}
-        <div className="mb-8 bg-white p-4 rounded-lg shadow border border-gray-200">
-          <h2 className="text-lg font-medium text-gray-700 mb-3">Upload Document</h2>
+        <div className="mb-8 bg-white dark:bg-dark-card p-4 rounded-lg shadow dark:shadow-gray-900 border border-gray-200 dark:border-dark-border">
+          <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3">Upload Document</h2>
           <fetcher.Form onSubmit={handleUploadSubmit} encType="multipart/form-data" className="space-y-4">
-              <div> <label htmlFor="file-upload" className="sr-only">Choose file</label> <input ref={fileInputRef} id="file-upload" name="kb-doc-input" type="file" onChange={handleFileChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50" disabled={isUploading} accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif"/> </div>
-              {selectedFile && !isUploading && ( <p className="text-sm text-gray-600">Selected: {selectedFile.name}</p> )}
+              <div> <label htmlFor="file-upload" className="sr-only">Choose file</label> <input ref={fileInputRef} id="file-upload" name="kb-doc-input" type="file" onChange={handleFileChange} className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800 disabled:opacity-50" disabled={isUploading} accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif"/> </div>
+              {selectedFile && !isUploading && ( <p className="text-sm text-gray-600 dark:text-gray-400">Selected: {selectedFile.name}</p> )}
               <div className="flex items-center justify-between">
-                <button type="submit" disabled={!selectedFile || isUploading} className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition"> {isUploading ? (<><ArrowPathIcon className="animate-spin h-4 w-4 mr-2"/>Uploading...</>) : (<><ArrowUpTrayIcon className="h-4 w-4 mr-2"/>Upload File</>)} </button>
-                {fetcher.data?.error && !isUploading && ( <p className="text-sm text-red-600 ml-4">{fetcher.data.error}</p> )}
+                <button type="submit" disabled={!selectedFile || isUploading} className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-green-500 disabled:opacity-50 transition"> {isUploading ? (<><ArrowPathIcon className="animate-spin h-4 w-4 mr-2"/>Uploading...</>) : (<><ArrowUpTrayIcon className="h-4 w-4 mr-2"/>Upload File</>)} </button>
+                {fetcher.data?.error && !isUploading && ( <p className="text-sm text-red-600 dark:text-red-400 ml-4">{fetcher.data.error}</p> )}
               </div>
           </fetcher.Form>
         </div>
 
         {/* Documents List Section */}
         <div>
-           <h2 className="text-lg font-medium text-gray-700 mb-3">Documents</h2>
+           <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3">Documents</h2>
            {(kbDetails.documents?.length ?? 0) === 0 ? ( // Safer check for empty/undefined
-                <div className="text-center py-8 px-4 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                  <DocumentIcon className="mx-auto h-8 w-8 text-gray-400" /> <h3 className="mt-2 text-sm font-medium text-gray-900">No Documents Yet</h3> <p className="mt-1 text-sm text-gray-500">Upload documents using the form above.</p>
+                <div className="text-center py-8 px-4 border border-dashed border-gray-300 dark:border-dark-border rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <DocumentIcon className="mx-auto h-8 w-8 text-gray-400 dark:text-gray-500" /> <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-dark-text">No Documents Yet</h3> <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Upload documents using the form above.</p>
                 </div>
            ) : (
-                <div className="bg-white shadow border border-gray-200 overflow-hidden sm:rounded-md">
-                  <ul role="list" className="divide-y divide-gray-200">
+                <div className="bg-white dark:bg-dark-card shadow dark:shadow-gray-900 border border-gray-200 dark:border-dark-border overflow-hidden sm:rounded-md">
+                  <ul role="list" className="divide-y divide-gray-200 dark:divide-dark-border">
                     {kbDetails.documents
                         .sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime()) // Sort newest first
                         .map((doc) => (
-                      <li key={doc.id} className="px-4 py-3 sm:px-6 hover:bg-gray-50 transition">
+                      <li key={doc.id} className="px-4 py-3 sm:px-6 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
                         <div className="flex items-center justify-between space-x-4">
                           <div className="flex items-center space-x-3 min-w-0">
                              {renderStatusIcon(doc.status)}
-                             <p className="text-sm font-medium text-gray-800 truncate" title={doc.filename}> {doc.filename} </p>
+                             <p className="text-sm font-medium text-gray-800 dark:text-dark-text truncate" title={doc.filename}> {doc.filename} </p>
                           </div>
-                          <div className="flex items-center space-x-4 flex-shrink-0 text-sm text-gray-500">
-                              {doc.status === 'error' && doc.error_message && ( <ExclamationTriangleIcon className="h-5 w-5 text-red-400 flex-shrink-0" title={`Error: ${doc.error_message}`} /> )}
-                              <span className="flex items-center" title={new Date(doc.uploaded_at).toString()}> <ClockIcon className="h-4 w-4 mr-1 text-gray-400" /> {new Date(doc.uploaded_at).toLocaleString()} </span>
+                          <div className="flex items-center space-x-4 flex-shrink-0 text-sm text-gray-500 dark:text-gray-400">
+                              {doc.status === 'error' && doc.error_message && ( <ExclamationTriangleIcon className="h-5 w-5 text-red-400 dark:text-red-500 flex-shrink-0" title={`Error: ${doc.error_message}`} /> )}
+                              <span className="flex items-center" title={new Date(doc.uploaded_at).toString()}> <ClockIcon className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" /> {new Date(doc.uploaded_at).toLocaleString()} </span>
                           </div>
                         </div>
-                        {doc.status === 'error' && doc.error_message && ( <p className="mt-1 pl-8 text-xs text-red-600">{doc.error_message}</p> )}
+                        {doc.status === 'error' && doc.error_message && ( <p className="mt-1 pl-8 text-xs text-red-600 dark:text-red-400">{doc.error_message}</p> )}
                       </li>
                     ))}
                   </ul>
@@ -298,11 +302,14 @@ export function ErrorBoundary() {
   } else if (error instanceof Error) { message = error.message; }
 
   return (
-     <div className="p-4 md:p-6 max-w-4xl mx-auto text-center">
-        <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-400" />
-        <h1 className="mt-2 text-xl font-semibold text-red-800">Error {status}</h1>
-        <p className="mt-2 text-sm text-red-700">{message}</p>
-        <div className="mt-6"> <Link to="/kbs" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"> Back to Knowledge Bases </Link> </div>
+     <div className="p-4 md:p-6 max-w-4xl mx-auto text-center min-h-screen bg-white dark:bg-dark-bg">
+        <div className="flex justify-end mb-4">
+          <SafeThemeToggle />
+        </div>
+        <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-400 dark:text-red-500" />
+        <h1 className="mt-2 text-xl font-semibold text-red-800 dark:text-red-400">Error {status}</h1>
+        <p className="mt-2 text-sm text-red-700 dark:text-red-300">{message}</p>
+        <div className="mt-6"> <Link to="/kbs" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-gray-500"> Back to Knowledge Bases </Link> </div>
      </div>
   );
 }

@@ -3,6 +3,7 @@ import { json, ActionFunctionArgs, redirect } from "@remix-run/node";
 import { Form, useActionData, useNavigation, Link } from "@remix-run/react";
 import { createKnowledgeBase } from "~/lib/apiClient";
 import { ArrowPathIcon, ChevronLeftIcon } from "@heroicons/react/24/outline";
+import SafeThemeToggle from "~/components/SafeThemeToggle";
 
 // Action: Handles the form submission to create a new KB
 export async function action({ request }: ActionFunctionArgs) {
@@ -54,21 +55,24 @@ export default function NewKnowledgeBase() {
     const [description, setDescription] = useState(actionData?.values?.description || '');
 
     return (
-      <div className="p-8 md:p-12 max-w-2xl mx-auto bg-gray-50 rounded-lg shadow-lg space-y-8">
-        <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800">
+      <div className="p-8 md:p-12 max-w-2xl mx-auto bg-gray-50 dark:bg-dark-bg rounded-lg shadow-lg dark:shadow-gray-900 space-y-8 min-h-screen text-gray-900 dark:text-dark-text">
+        <div className="flex justify-end">
+          <SafeThemeToggle />
+        </div>
+        <Link to="/kbs" className="inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
           <ChevronLeftIcon className="h-5 w-5 mr-2" />
           Back to Knowledge Bases
         </Link>
-        <h1 className="text-3xl font-bold text-gray-800">Create New Knowledge Base</h1>
+        <h1 className="text-3xl font-bold text-gray-800 dark:text-dark-text">Create New Knowledge Base</h1>
         {actionData?.error && (
-          <p className="text-sm text-red-600 bg-red-50 p-4 rounded-md border border-red-200" role="alert">
+          <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 p-4 rounded-md border border-red-200 dark:border-red-800" role="alert">
             {actionData.error}
           </p>
         )}
-        <Form method="post" className="space-y-6 bg-white p-8 rounded-lg shadow">
+        <Form method="post" className="space-y-6 bg-white dark:bg-dark-card p-8 rounded-lg shadow dark:shadow-gray-900">
           <div>
-            <label htmlFor="kbName" className="block text-lg font-medium text-gray-700">
-              Name <span className="text-red-500">*</span>
+            <label htmlFor="kbName" className="block text-lg font-medium text-gray-700 dark:text-dark-text">
+              Name <span className="text-red-500 dark:text-red-400">*</span>
             </label>
             <input
               type="text"
@@ -77,12 +81,12 @@ export default function NewKnowledgeBase() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="mt-2 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+              className="mt-2 block w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white dark:bg-dark-border dark:text-dark-text"
               placeholder="e.g., Project Documentation, Team Policies"
             />
           </div>
           <div>
-            <label htmlFor="kbDescription" className="block text-lg font-medium text-gray-700">
+            <label htmlFor="kbDescription" className="block text-lg font-medium text-gray-700 dark:text-dark-text">
               Description (Optional)
             </label>
             <textarea
@@ -91,10 +95,10 @@ export default function NewKnowledgeBase() {
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="mt-2 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base resize-none"
+              className="mt-2 block w-full px-4 py-3 border border-gray-300 dark:border-dark-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base resize-none bg-white dark:bg-dark-border dark:text-dark-text"
               placeholder="Describe the purpose or content of this knowledge base..."
             />
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
               A brief description helps identify the knowledge base later.
             </p>
           </div>
@@ -102,7 +106,7 @@ export default function NewKnowledgeBase() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 disabled:opacity-50"
+              className="inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-md shadow text-base font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-blue-500 transition duration-150 disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
