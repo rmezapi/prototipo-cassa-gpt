@@ -1,7 +1,6 @@
-// This is a temporary file to show the changes needed
-// Copy the relevant parts to the original file
+// Update the upload fetcher effect to add a system message for regular file uploads
+// Replace lines 377-387 with this code:
 
-// For the upload fetcher effect, replace with:
     // Handle Session Upload Fetcher response
     useEffect(() => {
         if (uploadFetcher.state === 'idle' && uploadFetcher.data) {
@@ -33,7 +32,7 @@
                 
                 setUiError(null);
             } else if (!data.ok) { 
-                setUiError(`Session Upload Error: ${data.error || "Err."}`);
+                setUiError(`Session Upload Error: ${data.error || "Err."}`); 
             }
         }
     }, [uploadFetcher.state, uploadFetcher.data]);
