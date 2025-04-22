@@ -14,15 +14,18 @@ import {
   useRevalidator,
   isRouteErrorResponse, // Import error helpers
   useRouteError,
-  useParams
-  // useNavigate // Uncomment if navigation is needed
+  useParams,
+  useNavigate
 } from "@remix-run/react";
 import {
   getKnowledgeBaseDetails,
   uploadDocumentToKb,
+  createConversation,
+  listConversations,
   type KnowledgeBaseDetail,
   type KnowledgeBaseDocumentInfo,
   type KbUploadResponsePayload,
+  type ConversationInfo,
 } from "~/lib/apiClient"; // Ensure path is correct
 import {
   ChevronLeftIcon,
@@ -36,6 +39,9 @@ import {
   ExclamationTriangleIcon,
   InformationCircleIcon,
   HomeIcon,
+  ChatBubbleLeftRightIcon,
+  PlusIcon,
+  CpuChipIcon,
 } from "@heroicons/react/24/outline";
 
 // --- Loader Function ---
@@ -47,8 +53,19 @@ export async function loader({ params }: LoaderFunctionArgs) {
   try {
     console.log(`kbs.$kbId Loader: Fetching details for KB ID: ${kbId}`);
     const kbDetails = await getKnowledgeBaseDetails(kbId);
+
+    // Fetch conversations that use this KB
+    console.log(`kbs.$kbId Loader: Fetching conversations for KB ID: ${kbId}`);
+    const allConversations = await listConversations(0, 100); // Get up to 100 conversations
+    const kbConversations = allConversations.filter(conv => conv.knowledge_base_id === kbId);
+    console.log(`kbs.$kbId Loader: Found ${kbConversations.length} conversations using this KB`);
+
     // Ensure documents array exists, even if empty
-    return json({ kbDetails: { ...kbDetails, documents: kbDetails.documents ?? [] }, error: null });
+    return json({
+      kbDetails: { ...kbDetails, documents: kbDetails.documents ?? [] },
+      kbConversations,
+      error: null
+    });
   } catch (error: unknown) {
     console.error(`kbs.$kbId Loader: Failed to load KB details for ${kbId}:`, error);
     if (error instanceof Response) { throw error; } // Re-throw Response errors for ErrorBoundary
@@ -143,9 +160,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
 const POLLING_INTERVAL_MS = 5000; // Poll every 5 seconds
 
 export default function KnowledgeBaseDetailView() {
-  const { kbDetails } = useLoaderData<typeof loader>();
+  const { kbDetails, kbConversations } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<{ success: boolean; error: string | null; document: KnowledgeBaseDocumentInfo | null }>();
   const revalidator = useRevalidator();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Ref to track if polling *should* be active based on the latest data
@@ -155,8 +173,28 @@ export default function KnowledgeBaseDetailView() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [manualUploading, setManualUploading] = useState<boolean>(false);
+  const [selectedModel, setSelectedModel] = useState<string>("meta-llama/Llama-3.3-70B-Instruct-Turbo-Free");
+  const [isCreatingChat, setIsCreatingChat] = useState<boolean>(false);
   const isUploading = fetcher.state !== 'idle' || manualUploading;
   const needsFirstDocument = kbDetails?.documents?.length === 0;
+
+  // Handle creating a new chat with this KB
+  const handleCreateChat = async () => {
+    if (isCreatingChat) return;
+
+    try {
+      setIsCreatingChat(true);
+      console.log(`Creating new chat with KB ${kbDetails.id} and model ${selectedModel}`);
+      const newChat = await createConversation(kbDetails.id, selectedModel);
+      console.log(`New chat created: ${newChat.id}`);
+      navigate(`/chat/${newChat.id}`);
+    } catch (error) {
+      console.error("Failed to create new chat:", error);
+      alert(`Failed to create new chat: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsCreatingChat(false);
+    }
+  };
 
   // --- Effect to Manage Polling START/STOP ---
   useEffect(() => {
@@ -398,9 +436,79 @@ export default function KnowledgeBaseDetailView() {
             </div>
         )}
 
+        {/* Chat Creation Section */}
+        <div className="mb-8 bg-white dark:bg-dark-card p-4 rounded-lg shadow dark:shadow-gray-900 border border-gray-200 dark:border-dark-border">
+          <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3 flex items-center">
+            <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" />
+            Create Chat with this Knowledge Base
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="model-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Select AI Model
+              </label>
+              <select
+                id="model-select"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full p-2 border bg-gray-100 dark:bg-dark-border border-gray-100 dark:border-dark-border rounded text-sm text-gray-800 dark:text-dark-text focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free">Llama-3.3-70B-Instruct-Turbo</option>
+                <option value="meta-llama/Llama-Vision-Free">Llama-Vision</option>
+                <option value="deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free">DeepSeek-R1-Distill-Llama-70B</option>
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateChat}
+              disabled={isCreatingChat}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-blue-500 transition-colors duration-150 disabled:opacity-60"
+            >
+              {isCreatingChat ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <PlusIcon className="h-5 w-5" />} New Chat with this KB
+            </button>
+          </div>
+        </div>
+
+        {/* Existing Chats Section */}
+        {kbConversations && kbConversations.length > 0 && (
+          <div className="mb-8 bg-white dark:bg-dark-card p-4 rounded-lg shadow dark:shadow-gray-900 border border-gray-200 dark:border-dark-border">
+            <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3 flex items-center">
+              <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" />
+              Existing Chats Using This KB
+            </h2>
+            <ul className="divide-y divide-gray-200 dark:divide-dark-border">
+              {kbConversations.map(conv => (
+                <li key={conv.id} className="py-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                  <Link
+                    to={`/chat/${conv.id}`}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <div className="flex items-center">
+                      <ChatBubbleLeftRightIcon className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                      <span className="text-gray-700 dark:text-gray-300">Chat {conv.id.substring(0, 8)}...</span>
+                    </div>
+                    <div className="flex items-center">
+                      <CpuChipIcon className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {conv.model_id ? conv.model_id.split('/').pop() : "Default Model"}
+                      </span>
+                      <span className="ml-3 text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(conv.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Document Upload Section */}
         <div className="mb-8 bg-white dark:bg-dark-card p-4 rounded-lg shadow dark:shadow-gray-900 border border-gray-200 dark:border-dark-border">
-          <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3">Upload Document</h2>
+          <h2 className="text-lg font-medium text-gray-700 dark:text-dark-text mb-3 flex items-center">
+            <ArrowUpTrayIcon className="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" />
+            Upload Document
+          </h2>
           <fetcher.Form onSubmit={handleUploadSubmit} encType="multipart/form-data" className="space-y-4">
               <div> <label htmlFor="file-upload" className="sr-only">Choose file</label> <input ref={fileInputRef} id="file-upload" name="kb-doc-input" type="file" onChange={handleFileChange} className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 dark:file:bg-blue-900 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-800 disabled:opacity-50" disabled={isUploading} accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif"/> </div>
               {selectedFile && !isUploading && ( <p className="text-sm text-gray-600 dark:text-gray-400">Selected: {selectedFile.name}</p> )}
