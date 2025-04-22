@@ -257,6 +257,17 @@ export default function ChatConversation() {
                             ? prev
                             : [...prev, { filename: result.filename, doc_id: result.doc_id || '' }]
                     );
+
+                    // Add a system message to show the upload was successful
+                    setMessages(prev => [
+                        ...prev,
+                        {
+                            id: crypto.randomUUID(),
+                            speaker: 'system',
+                            text: `File uploaded: ${result.filename}`,
+                            created_at: new Date().toISOString()
+                        }
+                    ]);
                 }
             } catch (error) {
                 console.error("Direct Excel file upload in chat failed:", error);

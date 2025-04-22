@@ -275,6 +275,24 @@ export default function KnowledgeBaseDetailView() {
            // This will be used to handle the error boundary redirect if needed
            sessionStorage.setItem('excelUploadSuccess', 'true');
 
+           // Add the document to the UI immediately with a processing status
+           // This gives immediate feedback to the user
+           const tempDocId = crypto.randomUUID();
+           const syntheticDoc: KnowledgeBaseDocumentInfo = {
+             id: tempDocId,
+             qdrant_doc_id: tempDocId,
+             filename: selectedFile.name,
+             status: 'processing',
+             error_message: null,
+             uploaded_at: new Date().toISOString(),
+             knowledge_base_id: kbDetails.id
+           };
+
+           // Update the UI with the synthetic document
+           if (kbDetails?.documents) {
+             kbDetails.documents = [syntheticDoc, ...kbDetails.documents];
+           }
+
            // Clear the file input
            setSelectedFile(null);
            if (fileInputRef.current) fileInputRef.current.value = "";
@@ -289,6 +307,24 @@ export default function KnowledgeBaseDetailView() {
            console.warn("Direct upload succeeded but no document details returned");
            // Log that we're using a fallback approach
            console.log(`Using fallback approach for Excel file: ${selectedFile.name}`);
+
+           // Add the document to the UI immediately with a processing status
+           // This gives immediate feedback to the user
+           const tempDocId = crypto.randomUUID();
+           const syntheticDoc: KnowledgeBaseDocumentInfo = {
+             id: tempDocId,
+             qdrant_doc_id: tempDocId,
+             filename: selectedFile.name,
+             status: 'processing',
+             error_message: null,
+             uploaded_at: new Date().toISOString(),
+             knowledge_base_id: kbDetails.id
+           };
+
+           // Update the UI with the synthetic document
+           if (kbDetails?.documents) {
+             kbDetails.documents = [syntheticDoc, ...kbDetails.documents];
+           }
 
            // Clear the file input
            setSelectedFile(null);
