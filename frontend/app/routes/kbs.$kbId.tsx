@@ -271,6 +271,10 @@ export default function KnowledgeBaseDetailView() {
            const uploadedDocumentInfo = result.details[0];
            console.log(`Direct upload successful for Excel file: ${uploadedDocumentInfo.filename}`);
 
+           // Set a flag in sessionStorage to indicate successful Excel upload
+           // This will be used to handle the error boundary redirect if needed
+           sessionStorage.setItem('excelUploadSuccess', 'true');
+
            // Clear the file input
            setSelectedFile(null);
            if (fileInputRef.current) fileInputRef.current.value = "";
@@ -419,6 +423,19 @@ export function ErrorBoundary() {
     error.message.includes("Unable to decode turbo-stream response");
 
   const is502Error = isRouteErrorResponse(error) && error.status === 502;
+
+  // Check if this is a reload after a successful Excel upload
+  const isExcelUploadReload = sessionStorage.getItem('excelUploadSuccess') === 'true';
+
+  // If this is a reload after Excel upload, clear the flag and redirect back to the KB page
+  if (isExcelUploadReload && isTurboStreamError) {
+    console.log("Detected reload after Excel upload, redirecting back to KB page");
+    sessionStorage.removeItem('excelUploadSuccess');
+    window.location.href = `/kbs/${params.kbId}`;
+    // Show a temporary message while redirecting
+    message = "Your Excel file was uploaded successfully. Redirecting...";
+    status = 200;
+  }
 
   // If it's the turbo-stream error, provide a more helpful message
   if (isTurboStreamError) {

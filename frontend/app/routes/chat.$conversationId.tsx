@@ -2,7 +2,7 @@
 
 // --- Core Remix Imports ---
 import type { MetaFunction, LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { Form, useLoaderData, useFetcher, useParams, Link, useNavigate } from "@remix-run/react"; // Removed useSubmit
+import { Form, useLoaderData, useFetcher, useParams, Link, useNavigate, useRouteError, isRouteErrorResponse } from "@remix-run/react"; // Removed useSubmit
 import { redirect } from "@remix-run/node";
 
 // --- React Imports ---
@@ -35,7 +35,8 @@ import {
     ArrowPathIcon,
     HomeIcon, // Added
     CircleStackIcon, // Added
-    CpuChipIcon // Added for model display
+    CpuChipIcon, // Added for model display
+    ExclamationTriangleIcon // Added for error boundary
 } from '@heroicons/react/24/outline';
 
 // --- Frontend Specific Types ---
@@ -168,7 +169,6 @@ export default function ChatConversation() {
     if (!conversationId) { return <div className="p-4 text-red-600">Error: Conversation ID is missing.</div>; }
 
     const isAiLoading = chatFetcher.state !== 'idle';
-    const isUploading = uploadFetcher.state !== 'idle'; // Session upload loading state
 
     // --- Handlers ---
     const loadConversations = useCallback(async (loadMore = false) => {
@@ -223,12 +223,64 @@ export default function ChatConversation() {
       }, [navigate, isCreatingChat, loadConversations, selectedKbForNewChat, selectedModel]);
 
     const handleUploadButtonClick = useCallback(() => { if(fileInputRef.current) fileInputRef.current.click(); }, []);
-    const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => { /* ... same session upload logic ... */
-        const file = event.target.files?.[0]; if(event.target) event.target.value = '';
+    // State for direct Excel uploads
+    const [manualUploading, setManualUploading] = useState<boolean>(false);
+    const isUploading = uploadFetcher.state !== 'idle' || manualUploading;
+
+    const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if(event.target) event.target.value = '';
         if (!file || !conversationId || isUploading) return;
-        const formData = new FormData(); formData.append("intent", "upload"); formData.append("file", file);
-        try { uploadFetcher.submit(formData, { method: "post", action: `/chat/${conversationId}`, encType: "multipart/form-data" }); setUiError(null); }
-        catch (error) { setUiError("Failed to initiate session file upload."); }
+
+        // Check if this is an Excel file
+        const isExcelFile = /\.(xlsx|xls)$/i.test(file.name);
+        console.log(`Chat file upload: ${file.name}, isExcel: ${isExcelFile}`);
+
+        // For Excel files, use direct API call to avoid turbo-stream error
+        if (isExcelFile) {
+            try {
+                setManualUploading(true);
+                setUiError(null);
+
+                // Call the API directly
+                const result = await uploadFileToSession(conversationId, file);
+
+                console.log(`Direct upload successful for Excel file in chat: ${result.filename}`);
+
+                // Set a flag in sessionStorage to handle potential errors on reload
+                sessionStorage.setItem('chatExcelUploadSuccess', 'true');
+
+                // Update the UI with the new file
+                if (result.filename && result.doc_id) {
+                    setUploadedFiles(prev =>
+                        prev.some(f => f.doc_id === result.doc_id)
+                            ? prev
+                            : [...prev, { filename: result.filename, doc_id: result.doc_id || '' }]
+                    );
+                }
+            } catch (error) {
+                console.error("Direct Excel file upload in chat failed:", error);
+                setUiError(`Failed to upload Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            } finally {
+                setManualUploading(false);
+            }
+        } else {
+            // For non-Excel files, use the normal Remix form submission
+            const formData = new FormData();
+            formData.append("intent", "upload");
+            formData.append("file", file);
+
+            try {
+                uploadFetcher.submit(formData, {
+                    method: "post",
+                    action: `/chat/${conversationId}`,
+                    encType: "multipart/form-data"
+                });
+                setUiError(null);
+            } catch (error) {
+                setUiError("Failed to initiate session file upload.");
+            }
+        }
     }, [uploadFetcher, conversationId, isUploading]);
 
     // --- Effects ---
@@ -564,4 +616,82 @@ export default function ChatConversation() {
             </main>
         </div>
       );
+}
+
+// --- Error Boundary ---
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const params = useParams();
+  console.error(`Error Boundary for chat/${params.conversationId || 'unknown'}:`, error);
+  let status = 500; let message = "An unexpected error occurred.";
+
+  // Check for specific errors
+  const isTurboStreamError = error instanceof Error &&
+    error.message.includes("Unable to decode turbo-stream response");
+
+  const is502Error = isRouteErrorResponse(error) && error.status === 502;
+
+  // Check if this is a reload after a successful Excel upload
+  const isExcelUploadReload = sessionStorage.getItem('chatExcelUploadSuccess') === 'true';
+
+  // If this is a reload after Excel upload, clear the flag and redirect back to the chat page
+  if (isExcelUploadReload && isTurboStreamError) {
+    console.log("Detected reload after Excel upload in chat, redirecting back");
+    sessionStorage.removeItem('chatExcelUploadSuccess');
+    window.location.href = `/chat/${params.conversationId}`;
+    // Show a temporary message while redirecting
+    message = "Your Excel file was uploaded successfully. Redirecting...";
+    status = 200;
+    return (
+      <div className="p-4 md:p-6 max-w-4xl mx-auto text-center min-h-screen bg-white dark:bg-dark-bg">
+        <div className="flex justify-end mb-4">
+          <SafeThemeToggle />
+        </div>
+        <h1 className="mt-2 text-xl font-semibold text-green-600 dark:text-green-400">Success</h1>
+        <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{message}</p>
+        <div className="mt-6 flex justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
+  }
+
+  // If it's the turbo-stream error, provide a more helpful message
+  if (isTurboStreamError) {
+    message = "There was an issue uploading the file. This is likely due to an Excel file format. Please try a different file format or contact support.";
+    status = 400; // Use a 400 status to indicate it's a client-side issue
+  } else if (is502Error) {
+    message = "The server is temporarily unavailable. Your file was likely uploaded successfully. Please refresh the page to see if your document appears in the list.";
+    status = 502;
+  } else if (isRouteErrorResponse(error)) {
+    status = error.status;
+    try { // Attempt to parse detail from common error structures
+       const errorData = typeof error.data === 'string' ? JSON.parse(error.data) : error.data;
+       message = errorData?.detail || errorData?.message || error.statusText || `Request failed with status ${status}`;
+    } catch(e) { message = error.data || error.statusText || `Request failed with status ${status}`; }
+  } else if (error instanceof Error) { message = error.message; }
+
+  return (
+     <div className="p-4 md:p-6 max-w-4xl mx-auto text-center min-h-screen bg-white dark:bg-dark-bg">
+        <div className="flex justify-end mb-4">
+          <SafeThemeToggle />
+        </div>
+        <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-400 dark:text-red-500" />
+        <h1 className="mt-2 text-xl font-semibold text-red-800 dark:text-red-400">Error {status}</h1>
+        <p className="mt-2 text-sm text-red-700 dark:text-red-300">{message}</p>
+        <div className="mt-6 flex justify-center space-x-4">
+          {is502Error && (
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-blue-500"
+            >
+              Refresh Page
+            </button>
+          )}
+          <Link to="/" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-gray-500">
+            Back to Home
+          </Link>
+        </div>
+     </div>
+  );
 }
