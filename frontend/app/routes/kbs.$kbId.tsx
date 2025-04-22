@@ -15,6 +15,7 @@ import {
   isRouteErrorResponse, // Import error helpers
   useRouteError,
   useParams
+  // useNavigate // Uncomment if navigation is needed
 } from "@remix-run/react";
 import {
   getKnowledgeBaseDetails,
@@ -153,7 +154,8 @@ export default function KnowledgeBaseDetailView() {
   const processedFetcherDocId = useRef<string | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const isUploading = fetcher.state !== 'idle';
+  const [manualUploading, setManualUploading] = useState<boolean>(false);
+  const isUploading = fetcher.state !== 'idle' || manualUploading;
   const needsFirstDocument = kbDetails?.documents?.length === 0;
 
   // --- Effect to Manage Polling START/STOP ---
@@ -240,7 +242,7 @@ export default function KnowledgeBaseDetailView() {
 
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; setSelectedFile(file || null); };
-  const handleUploadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleUploadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
      event.preventDefault();
      if (!selectedFile || isUploading || !kbDetails?.id) return;
 
@@ -249,19 +251,57 @@ export default function KnowledgeBaseDetailView() {
      console.log(`Uploading file: ${selectedFile.name}, isExcel: ${isExcelFile}`);
 
      processedFetcherDocId.current = null; // Reset processed ID before new submit
-     const formData = new FormData();
-     formData.append("file", selectedFile);
 
-     // Add a hint for Excel files to help with content negotiation
+     // For Excel files, use direct API call instead of Remix form submission
+     // to avoid the turbo-stream decoding error
      if (isExcelFile) {
-       formData.append("fileType", "excel");
-     }
+       try {
+         // Set uploading state manually since we're not using the fetcher
+         setManualUploading(true);
 
-     fetcher.submit(formData, {
-       method: "post",
-       encType: "multipart/form-data",
-       action: `/kbs/${kbDetails.id}`
-     });
+         // Call the API directly
+         const result = await uploadDocumentToKb(kbDetails.id, selectedFile);
+
+         if (result && result.details && result.details.length > 0) {
+           const uploadedDocumentInfo = result.details[0];
+           console.log(`Direct upload successful for Excel file: ${uploadedDocumentInfo.filename}`);
+
+           // Clear the file input
+           setSelectedFile(null);
+           if (fileInputRef.current) fileInputRef.current.value = "";
+
+           // Trigger revalidation to refresh the documents list
+           revalidator.revalidate();
+         } else {
+           console.warn("Direct upload succeeded but no document details returned");
+           // Log that we're using a fallback approach
+           console.log(`Using fallback approach for Excel file: ${selectedFile.name}`);
+
+           // Clear the file input
+           setSelectedFile(null);
+           if (fileInputRef.current) fileInputRef.current.value = "";
+
+           // Trigger revalidation to refresh the documents list
+           revalidator.revalidate();
+         }
+       } catch (error) {
+         console.error("Direct Excel file upload failed:", error);
+         // Show error to user
+         alert(`Failed to upload Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+       } finally {
+         setManualUploading(false);
+       }
+     } else {
+       // For non-Excel files, use the normal Remix form submission
+       const formData = new FormData();
+       formData.append("file", selectedFile);
+
+       fetcher.submit(formData, {
+         method: "post",
+         encType: "multipart/form-data",
+         action: `/kbs/${kbDetails.id}`
+       });
+     }
   };
 
   // Helper to render status icons
@@ -357,10 +397,19 @@ export default function KnowledgeBaseDetailView() {
 export function ErrorBoundary() {
   const error = useRouteError();
   const params = useParams();
+  // const navigate = useNavigate(); // Uncomment if navigation is needed
   console.error(`Error Boundary for kbs/${params.kbId || 'unknown'}:`, error);
   let status = 500; let message = "An unexpected error occurred.";
 
-  if (isRouteErrorResponse(error)) {
+  // Check for the specific turbo-stream error
+  const isTurboStreamError = error instanceof Error &&
+    error.message.includes("Unable to decode turbo-stream response");
+
+  // If it's the turbo-stream error, provide a more helpful message
+  if (isTurboStreamError) {
+    message = "There was an issue uploading the file. This is likely due to an Excel file format. Please try a different file format or contact support.";
+    status = 400; // Use a 400 status to indicate it's a client-side issue
+  } else if (isRouteErrorResponse(error)) {
     status = error.status;
     try { // Attempt to parse detail from common error structures
        const errorData = typeof error.data === 'string' ? JSON.parse(error.data) : error.data;
