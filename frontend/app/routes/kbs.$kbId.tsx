@@ -180,7 +180,12 @@ export default function KnowledgeBaseDetailView() {
                 // Check the ref *inside* the interval callback
                 if (isPollingActiveRef.current) {
                     console.log("Polling Interval: Triggering revalidation.");
-                    revalidator.revalidate();
+                    try {
+                      revalidator.revalidate();
+                    } catch (error) {
+                      console.error("Error during polling revalidation:", error);
+                      // Don't stop polling on error - we'll try again next interval
+                    }
                 } else {
                     // If the ref indicates stop, clear the interval from within
                     console.log("Polling Interval: Detected polling should stop. Clearing interval.");
@@ -270,8 +275,12 @@ export default function KnowledgeBaseDetailView() {
            setSelectedFile(null);
            if (fileInputRef.current) fileInputRef.current.value = "";
 
-           // Trigger revalidation to refresh the documents list
-           revalidator.revalidate();
+           // Add a slight delay before revalidation to give the server time to process
+           console.log("Scheduling revalidation after successful Excel upload...");
+           setTimeout(() => {
+             console.log("Executing delayed revalidation...");
+             revalidator.revalidate();
+           }, 1500); // 1.5 second delay
          } else {
            console.warn("Direct upload succeeded but no document details returned");
            // Log that we're using a fallback approach
@@ -281,8 +290,12 @@ export default function KnowledgeBaseDetailView() {
            setSelectedFile(null);
            if (fileInputRef.current) fileInputRef.current.value = "";
 
-           // Trigger revalidation to refresh the documents list
-           revalidator.revalidate();
+           // Add a slight delay before revalidation to give the server time to process
+           console.log("Scheduling revalidation after fallback Excel upload...");
+           setTimeout(() => {
+             console.log("Executing delayed revalidation...");
+             revalidator.revalidate();
+           }, 1500); // 1.5 second delay
          }
        } catch (error) {
          console.error("Direct Excel file upload failed:", error);
@@ -401,14 +414,19 @@ export function ErrorBoundary() {
   console.error(`Error Boundary for kbs/${params.kbId || 'unknown'}:`, error);
   let status = 500; let message = "An unexpected error occurred.";
 
-  // Check for the specific turbo-stream error
+  // Check for specific errors
   const isTurboStreamError = error instanceof Error &&
     error.message.includes("Unable to decode turbo-stream response");
+
+  const is502Error = isRouteErrorResponse(error) && error.status === 502;
 
   // If it's the turbo-stream error, provide a more helpful message
   if (isTurboStreamError) {
     message = "There was an issue uploading the file. This is likely due to an Excel file format. Please try a different file format or contact support.";
     status = 400; // Use a 400 status to indicate it's a client-side issue
+  } else if (is502Error) {
+    message = "The server is temporarily unavailable. Your file was likely uploaded successfully. Please refresh the page to see if your document appears in the list.";
+    status = 502;
   } else if (isRouteErrorResponse(error)) {
     status = error.status;
     try { // Attempt to parse detail from common error structures
@@ -425,7 +443,19 @@ export function ErrorBoundary() {
         <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-red-400 dark:text-red-500" />
         <h1 className="mt-2 text-xl font-semibold text-red-800 dark:text-red-400">Error {status}</h1>
         <p className="mt-2 text-sm text-red-700 dark:text-red-300">{message}</p>
-        <div className="mt-6"> <Link to="/kbs" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-gray-500"> Back to Knowledge Bases </Link> </div>
+        <div className="mt-6 flex justify-center space-x-4">
+          {is502Error && (
+            <button
+              onClick={() => window.location.reload()}
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 dark:bg-blue-700 hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-blue-500"
+            >
+              Refresh Page
+            </button>
+          )}
+          <Link to="/kbs" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-bg focus:ring-gray-500">
+            Back to Knowledge Bases
+          </Link>
+        </div>
      </div>
   );
 }
