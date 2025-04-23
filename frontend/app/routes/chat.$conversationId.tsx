@@ -190,14 +190,103 @@ export default function ChatConversation() {
     }, [totalConversationsLoaded, isLoadingList]);
 
     const handleLoadMoreConversations = useCallback(() => { if (!isLoadingList) loadConversations(true); }, [isLoadingList, loadConversations]);
-    const handleSendMessage = useCallback(() => { /* ... same optimistic send ... */
-        const query = inputText.trim(); if (!query || chatFetcher.state !== 'idle' || !conversationId) return;
+    const handleSendMessage = useCallback(() => {
+        const query = inputText.trim();
+        if (!query || chatFetcher.state !== 'idle' || !conversationId) return;
+
+        // Generate a unique ID for this message
         const optimisticId = `optimistic-user-${Date.now()}`;
-        setMessages(prev => [...prev, { id: optimisticId, speaker: 'user', text: query, isLoading: true, created_at: new Date().toISOString() }]);
-        setInputText(""); setUiError(null);
+
+        // Add the user message to the UI immediately
+        setMessages(prev => [...prev, {
+            id: optimisticId,
+            speaker: 'user',
+            text: query,
+            isLoading: true,
+            created_at: new Date().toISOString()
+        }]);
+
+        // Clear the input and any errors
+        setInputText("");
+        setUiError(null);
+
+        // Store the current system messages to ensure they don't disappear
+        const systemMessagesBeforeSubmit = messages.filter(m => m.speaker === 'system');
+        // Store their IDs for quick lookup
+        const systemMessageIds = systemMessagesBeforeSubmit.map(m => m.id);
+
+        // Capture current state for closures
+        const currentChatFetcher = chatFetcher;
+        const currentOptimisticId = optimisticId;
+
+        // Set a timeout to detect if the request is taking too long
+        const timeoutId = setTimeout(() => {
+            if (currentChatFetcher.state !== 'idle') {
+                setUiError("The request is taking longer than expected. Please wait or try again.");
+
+                // After 30 seconds, if still not idle, mark the message as not loading
+                // but don't remove it - this allows the user to see their message
+                // even if the server response is delayed
+                setTimeout(() => {
+                    // Check if the message is still loading after 30 seconds
+                    setMessages(prev => {
+                        // Find if the message is still in the loading state
+                        const messageStillLoading = prev.some(m =>
+                            m.id === currentOptimisticId && m.isLoading
+                        );
+
+                        // If it's still loading, mark it as not loading
+                        if (messageStillLoading) {
+                            console.log("Request timeout exceeded 30 seconds, marked message as not loading");
+                            return prev.map(m =>
+                                m.id === currentOptimisticId ? { ...m, isLoading: false } : m
+                            );
+                        }
+
+                        // Otherwise, don't change anything
+                        return prev;
+                    });
+                }, 15000); // Additional 15 seconds (30 seconds total)
+            }
+        }, 15000); // 15 seconds timeout
+
+        // Submit the message to the server
         chatFetcher.submit({ intent: "chat", query }, { method: "post", action: `/chat/${conversationId}` });
-        setTimeout(() => chatInputRef.current?.focus(), 0);
-    }, [inputText, chatFetcher, conversationId]);
+
+        // Focus the input field
+        setTimeout(() => {
+            chatInputRef.current?.focus();
+
+            // Check if any system messages were removed or changed
+            setMessages(prev => {
+                // Get current system message IDs
+                const currentSystemMessageIds = prev
+                    .filter(m => m.speaker === 'system')
+                    .map(m => m.id);
+
+                // Check if any system messages are missing
+                const missingSystemMessages = systemMessagesBeforeSubmit.filter(
+                    m => !currentSystemMessageIds.includes(m.id)
+                );
+
+                if (missingSystemMessages.length > 0) {
+                    console.log("System messages were removed, restoring them...", missingSystemMessages);
+
+                    // Create a new array with all current messages plus the missing system messages
+                    // Sort by creation time to maintain proper order
+                    return [...prev, ...missingSystemMessages].sort((a, b) => {
+                        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                    });
+                }
+
+                // If no system messages are missing, return the current state
+                return prev;
+            });
+
+            // Clear the timeout
+            clearTimeout(timeoutId);
+        }, 100);
+    }, [inputText, chatFetcher, conversationId, messages]);
 
     const handleNewChat = useCallback(async () => {
         if (isCreatingChat) return;
@@ -325,8 +414,12 @@ export default function ChatConversation() {
         }
     }, [selectedModel]);
 
+    // Create a ref to track the last processed response ID to prevent duplicate processing
+    const responseIdRef = useRef<string | null>(null);
+
     // Handle ChatFetcher response (optimistic UI)
     useEffect(() => {
+
       if (chatFetcher.state === "idle") {
         // Update user messages: mark loading ones as done
         setMessages((prev) =>
@@ -336,8 +429,8 @@ export default function ChatConversation() {
                 ? { ...m, isLoading: false }
                 : m
             )
-            // Optionally remove any leftover loading messages (if desired)
-            .filter((m) => !(m.isLoading && m.speaker === "user"))
+            // Keep all messages, even loading ones, to prevent disappearing messages
+            // We'll just mark them as not loading
         );
 
         const data = chatFetcher.data;
@@ -345,30 +438,55 @@ export default function ChatConversation() {
           if (data.ok && data.type === "chat") {
             const aiMsg = data.aiResponse;
             if (aiMsg?.response) {
-              setMessages((prev) => {
-                const exists = prev.some(
-                  (m) =>
-                    (aiMsg.id && m.id === aiMsg.id) ||
-                    (m.text === aiMsg.response && m.speaker === "ai")
-                );
-                return exists
-                  ? prev
-                  : [
-                      ...prev,
-                      {
-                        id: aiMsg.id || crypto.randomUUID(),
-                        speaker: "ai",
-                        text: aiMsg.response,
-                        sources: aiMsg.sources,
-                        created_at: new Date().toISOString(),
-                      },
-                    ];
-              });
-              setUiError(null);
+              // Generate a response ID if one doesn't exist
+              const responseId = aiMsg.id || `ai-response-${Date.now()}`;
+
+              // Check if we've already processed this response
+              if (responseId !== responseIdRef.current) {
+                responseIdRef.current = responseId;
+
+                setMessages((prev) => {
+                  // Check if this response already exists in the messages
+                  const exists = prev.some(
+                    (m) =>
+                      (responseId && m.id === responseId) ||
+                      (m.text === aiMsg.response && m.speaker === "ai")
+                  );
+
+                  // If the response already exists, don't modify the messages
+                  if (exists) {
+                    return prev;
+                  }
+
+                  // Sort messages by creation time to maintain proper order
+                  // This ensures system messages appear in the correct chronological position
+                  const newMessage = {
+                    id: responseId,
+                    speaker: "ai" as const,
+                    text: aiMsg.response,
+                    sources: aiMsg.sources,
+                    created_at: new Date().toISOString(),
+                  };
+
+                  // Add the new message and sort all messages by creation time
+                  const updatedMessages = [...prev, newMessage].sort((a, b) => {
+                    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                  });
+
+                  return updatedMessages;
+                });
+
+                setUiError(null);
+              } else {
+                console.log("Skipping duplicate AI response:", responseId);
+              }
             }
           } else if (!data.ok) {
             setUiError(data.error || "Failed to send message.");
-            setMessages((prev) => prev.filter((m) => !m.isLoading));
+            // Don't remove loading messages, just mark them as not loading
+            setMessages((prev) =>
+              prev.map(m => m.isLoading ? { ...m, isLoading: false } : m)
+            );
           }
         }
       }
