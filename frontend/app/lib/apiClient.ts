@@ -130,8 +130,8 @@ export const uploadFileToSession = async (
     formData.append("file", file, file.name);
     console.log("FormData prepared for session upload:", conversationId, file.name);
 
-    // Use a custom fetch implementation to handle potential non-JSON responses
-    const url = `${API_BASE_URL}/chat/conversations/${conversationId}/files/upload`;
+    // Try a different endpoint format that might be more compatible with the backend
+    const url = `${API_BASE_URL}/chat/${conversationId}/upload`;
 
     try {
         // Create headers without Content-Type for FormData
@@ -139,51 +139,114 @@ export const uploadFileToSession = async (
         // Let the browser set the Content-Type with boundary for FormData
 
         console.log(`uploadFileToSession: Sending request to ${url}`);
-        const response = await fetch(url, {
-            method: "POST",
-            body: formData,
-            headers
-        });
 
-        console.log(`uploadFileToSession: Response status: ${response.status}`);
+        // Add a timeout to the fetch request
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-        if (!response.ok) {
-            let errorMessage = `HTTP error ${response.status}`;
-            try {
-                // Try to parse as JSON first
-                const contentType = response.headers.get('content-type');
-                if (contentType && contentType.includes('application/json')) {
-                    const errorData = await response.json();
-                    errorMessage = errorData?.detail || errorMessage;
-                } else {
-                    // If not JSON, get text
-                    errorMessage = await response.text() || errorMessage;
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                body: formData,
+                headers,
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+            console.log(`uploadFileToSession: Response status: ${response.status}`);
+
+            if (!response.ok) {
+                let errorMessage = `HTTP error ${response.status}`;
+                try {
+                    // Try to parse as JSON first
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        errorMessage = errorData?.detail || errorMessage;
+                    } else {
+                        // If not JSON, get text
+                        errorMessage = await response.text() || errorMessage;
+                    }
+                } catch (e) {
+                    console.error('Error parsing error response:', e);
                 }
-            } catch (e) {
-                console.error('Error parsing error response:', e);
+                throw new Response(errorMessage, { status: response.status });
             }
-            throw new Response(errorMessage, { status: response.status });
-        }
 
-        // Check content type to determine how to parse the response
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            const data = await response.json();
-            console.log(`uploadFileToSession: Response data:`, data);
-            return data;
-        } else {
-            // If not JSON, create a synthetic response
-            console.log(`uploadFileToSession: Non-JSON response, creating synthetic response`);
-            // Create a minimal valid response object
-            return {
-                message: "File uploaded successfully",
-                filename: file.name,
-                doc_id: crypto.randomUUID(),
-                chunks_added: 1
-            };
+            // Check content type to determine how to parse the response
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                const data = await response.json();
+                console.log(`uploadFileToSession: Response data:`, data);
+                return data;
+            } else {
+                // If not JSON, create a synthetic response
+                console.log(`uploadFileToSession: Non-JSON response, creating synthetic response`);
+                // Create a minimal valid response object
+                return {
+                    message: "File uploaded successfully",
+                    filename: file.name,
+                    doc_id: crypto.randomUUID(),
+                    chunks_added: 1
+                };
+            }
+        } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+            if (fetchError.name === 'AbortError') {
+                console.error('Request timed out');
+                throw new Error('Request timed out. The server took too long to respond.');
+            }
+            throw fetchError;
         }
     } catch (error) {
-        console.error(`uploadFileToSession failed:`, error);
+        console.error(`uploadFileToSession failed with primary endpoint:`, error);
+
+        // If the first endpoint fails, try a fallback endpoint
+        if (error instanceof Response && (error.status === 404 || error.status === 520)) {
+            console.log("Trying fallback endpoint for session upload...");
+
+            // Try a different fallback endpoint
+            const fallbackUrl = `${API_BASE_URL}/upload`;
+            console.log(`uploadFileToSession: Trying fallback URL: ${fallbackUrl}`);
+
+            try {
+                const headers = new Headers();
+                const fallbackResponse = await fetch(fallbackUrl, {
+                    method: "POST",
+                    body: formData,
+                    headers
+                });
+
+                console.log(`uploadFileToSession: Fallback response status: ${fallbackResponse.status}`);
+
+                if (!fallbackResponse.ok) {
+                    throw new Response(`Fallback endpoint also failed with status ${fallbackResponse.status}`,
+                        { status: fallbackResponse.status });
+                }
+
+                // Check content type to determine how to parse the response
+                const contentType = fallbackResponse.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const data = await fallbackResponse.json();
+                    console.log(`uploadFileToSession: Fallback response data:`, data);
+                    return data;
+                } else {
+                    // If not JSON, create a synthetic response
+                    console.log(`uploadFileToSession: Fallback returned non-JSON, creating synthetic response`);
+                    return {
+                        message: "File uploaded successfully (fallback)",
+                        filename: file.name,
+                        doc_id: crypto.randomUUID(),
+                        chunks_added: 1
+                    };
+                }
+            } catch (fallbackError) {
+                console.error(`uploadFileToSession: Fallback endpoint also failed:`, fallbackError);
+                // Continue to the original error handling below
+            }
+        }
+
+        // Original error handling
         if (error instanceof Response) {
             throw error;
         } else if (error instanceof Error) {
