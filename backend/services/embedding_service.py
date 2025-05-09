@@ -1,10 +1,12 @@
 # backend/services/embedding_service.py
 import os
 import logging
-import httpx # Use httpx for async HTTP requests
+import torch
+import numpy as np
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from tenacity import retry, stop_after_attempt, wait_random_exponential # For retries
+from fastapi.concurrency import run_in_threadpool
 
 load_dotenv()
 
@@ -12,34 +14,35 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- Configuration ---
-HF_TOKEN = os.getenv("HF_TOKEN")
-# Model ID for the desired multilingual model on Hugging Face Hub
-DEFAULT_MULTILINGUAL_MODEL_ID = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" # Example
+# Model ID for the desired multilingual model
+DEFAULT_MULTILINGUAL_MODEL_ID = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 MODEL_ID = os.getenv("MULTILINGUAL_EMBEDDING_MODEL_ID", DEFAULT_MULTILINGUAL_MODEL_ID)
 
-# Construct the Hugging Face Inference API URL for Feature Extraction
-# Ensure this URL format is correct for your chosen model type
-API_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{MODEL_ID}"
-
-# Set authorization header if token is available
-HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
-if not HF_TOKEN:
-    logger.warning("HF_TOKEN environment variable not set. Access to some HF models may be restricted.")
-
 # --- Expected Dimension (CRUCIAL for Qdrant) ---
-# You MUST verify this dimension from the model card on Hugging Face Hub
 # For sentence-transformers/paraphrase-multilingual-mpnet-base-v2, it's 768
-# For models like m2-bert-80M-8k-retrieval, it might be different (e.g., 768 or 384 - CHECK!)
-EXPECTED_EMBEDDING_DIMENSION = 768 # *** UPDATE THIS VALUE BASED ON YOUR CHOSEN MODEL_ID ***
+EXPECTED_EMBEDDING_DIMENSION = 768
+
+# Initialize the model
+try:
+    from sentence_transformers import SentenceTransformer
+    logger.info(f"Loading SentenceTransformer model: {MODEL_ID}")
+    model = SentenceTransformer(MODEL_ID)
+    logger.info(f"SentenceTransformer model loaded successfully")
+except ImportError:
+    logger.error("sentence_transformers package not installed. Please install with: pip install sentence-transformers")
+    model = None
+except Exception as e:
+    logger.error(f"Error loading SentenceTransformer model: {e}")
+    model = None
 
 # --- Service Class ---
 class EmbeddingService:
 
-    # Retry decorator for handling transient network errors or API hiccups
+    # Retry decorator for handling transient errors
     @retry(wait=wait_random_exponential(min=1, max=30), stop=stop_after_attempt(4))
     async def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """
-        Generates embeddings for a list of texts using the Hugging Face Inference API.
+        Generates embeddings for a list of texts using the sentence-transformers library directly.
 
         Args:
             texts: A list of text strings to embed.
@@ -48,7 +51,7 @@ class EmbeddingService:
             A list of embedding vectors (list of floats), corresponding to the input texts.
 
         Raises:
-            HTTPException: If the API call fails or returns unexpected data.
+            HTTPException: If the embedding generation fails.
         """
         if not texts:
             logger.warning("get_embeddings called with empty text list.")
@@ -56,71 +59,48 @@ class EmbeddingService:
 
         # Ensure input is a list, even if only one text
         if not isinstance(texts, list):
-             logger.error(f"Invalid input type for texts: {type(texts)}. Expected list.")
-             # Handle appropriately - raise error or try to convert? Raising is safer.
-             raise HTTPException(status_code=400, detail="Invalid input format: texts must be a list.")
+            logger.error(f"Invalid input type for texts: {type(texts)}. Expected list.")
+            raise HTTPException(status_code=400, detail="Invalid input format: texts must be a list.")
 
-        logger.info(f"Requesting embeddings for {len(texts)} texts using HF model {MODEL_ID}...")
+        # Check if model is loaded
+        if model is None:
+            logger.error("SentenceTransformer model is not loaded.")
+            raise HTTPException(status_code=503, detail="Embedding service is not available. Model could not be loaded.")
+
+        logger.info(f"Generating embeddings for {len(texts)} texts using model {MODEL_ID}...")
 
         try:
-            # Use an async HTTP client for non-blocking requests
-            async with httpx.AsyncClient(timeout=60.0) as client: # Set a reasonable timeout
-                response = await client.post(
-                    API_URL,
-                    headers=HEADERS,
-                    # Payload format for feature-extraction pipeline
-                    json={
-                        "inputs": texts,
-                        "options": {
-                            "wait_for_model": True, # Wait if the model isn't ready
-                            "use_gpu": False # Optional: Set to True if you have access/need GPU on HF side
-                            }
-                    }
-                )
-                # Raise HTTP errors (4xx, 5xx)
-                response.raise_for_status()
-                # Parse the JSON response
-                result = response.json()
+            # Run the embedding generation in a thread pool to avoid blocking
+            def _generate_embeddings():
+                # Generate embeddings using the sentence-transformers model
+                embeddings = model.encode(texts, convert_to_numpy=True)
+                # Convert numpy arrays to Python lists for JSON serialization
+                return embeddings.tolist()
 
-        # --- Specific Error Handling ---
-        except httpx.RequestError as e:
-             # Errors during the request (network issue, DNS, etc.)
-             logger.error(f"HF Inference API request error: {e}", exc_info=True)
-             raise HTTPException(status_code=503, detail=f"Service Unavailable: Communication error with Embedding API: {e}")
-        except httpx.HTTPStatusError as e:
-             # Errors returned by the API (4xx client errors, 5xx server errors)
-             logger.error(f"HF Inference API returned status {e.response.status_code}: {e.response.text}")
-             detail = f"Embedding API Error ({e.response.status_code})"
-             try: # Attempt to get more specific error message from HF response
-                 error_detail = e.response.json().get("error", "")
-                 if isinstance(error_detail, list): error_detail = " ".join(error_detail) # Handle list errors
-                 if error_detail: detail += f": {error_detail}"
-             except Exception: pass # Ignore if response isn't JSON or parsing fails
-             # Use the original status code from the API response if possible
-             raise HTTPException(status_code=e.response.status_code, detail=detail)
+            # Run in thread pool to avoid blocking the event loop
+            result = await run_in_threadpool(_generate_embeddings)
+
         except Exception as e:
-             # Catch other potential errors (e.g., JSON decoding, unexpected issues)
-             logger.error(f"Unexpected error during embedding generation: {e}", exc_info=True)
-             raise HTTPException(status_code=500, detail=f"Internal error processing embeddings: {e}")
+            logger.error(f"Error generating embeddings: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to generate embeddings: {str(e)}")
 
-        # --- Process Successful Result ---
-        # Validate the structure of the result (should be a list of embeddings)
-        if not isinstance(result, list) or not all(isinstance(emb, list) for emb in result):
-            logger.error(f"Unexpected embedding response format from HF API. Type: {type(result)}. Content: {str(result)[:200]}...")
-            raise HTTPException(status_code=500, detail="Received unexpected embedding format from API.")
+        # Validate the structure of the result
+        if not isinstance(result, list):
+            logger.error(f"Unexpected embedding format. Type: {type(result)}")
+            raise HTTPException(status_code=500, detail="Received unexpected embedding format.")
 
         # Validate the number of embeddings returned
         if len(result) != len(texts):
-             logger.error(f"Mismatch in embedding count: Expected {len(texts)}, Got {len(result)}")
-             raise HTTPException(status_code=500, detail="Mismatch between input texts and received embeddings.")
+            logger.error(f"Mismatch in embedding count: Expected {len(texts)}, Got {len(result)}")
+            raise HTTPException(status_code=500, detail="Mismatch between input texts and received embeddings.")
 
-        # Optional but recommended: Validate the dimension of the first embedding
+        # Validate the dimension of the first embedding
         if result and len(result[0]) != EXPECTED_EMBEDDING_DIMENSION:
             logger.error(f"CRITICAL: Embedding dimension mismatch! Expected {EXPECTED_EMBEDDING_DIMENSION}, Got {len(result[0])} for model {MODEL_ID}")
             # This is a critical error as it will break Qdrant storage
             raise HTTPException(status_code=500, detail=f"Internal configuration error: Embedding dimension mismatch (Expected {EXPECTED_EMBEDDING_DIMENSION}).")
 
-        logger.info(f"Successfully received {len(result)} embeddings from HF API for model {MODEL_ID}.")
+        logger.info(f"Successfully generated {len(result)} embeddings using model {MODEL_ID}.")
         return result
 
 # --- Singleton Pattern ---

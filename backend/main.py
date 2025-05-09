@@ -11,8 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Import the routers
 from routers import chat as chat_router
-from routers import upload as upload_router 
-from routers import knowledge_bases as kb_router 
+from routers import upload as upload_router
+from routers import knowledge_bases as kb_router
 
 # Import the Qdrant service instance (to ensure it initializes on startup)
 # We don't directly use it in main.py yet, but importing ensures connection check
@@ -92,6 +92,7 @@ origins = [
     "http://localhost", # Allow base localhost
     "http://localhost:3000", # Default Remix dev port
     "http://localhost:5173", # Default Vite dev port (sometimes used)
+    "http://localhost:5174", # Additional Vite dev port
     "http://localhost:8000", # Allow Swagger UI/API itself if needed
     # --- Add your deployed frontend origin (Netlify URL) when ready ---
     "https://cassagpt-demo.netlify.app",
