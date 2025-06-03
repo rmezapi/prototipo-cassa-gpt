@@ -94,6 +94,7 @@ origins = [
     "http://localhost:5173", # Default Vite dev port (sometimes used)
     "http://localhost:5174", # Additional Vite dev port
     "http://localhost:8000", # Allow Swagger UI/API itself if needed
+    "http://localhost:8001", # Allow Swagger UI/API itself if needed
     # --- Add your deployed frontend origin (Netlify URL) when ready ---
     "https://cassagpt-demo.netlify.app",
     "https://prototipo-cassa-gpt-backend.onrender.com"
